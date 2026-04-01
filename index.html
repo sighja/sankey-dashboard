@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>P&L Sankey â Revenue & Cost Breakdown by Year</title>
+<title>P&L Sankey — Revenue & Cost Breakdown by Year</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -76,7 +76,7 @@
 <body>
 
 <div class="header">
-  <h1>P&L Sankey â Revenue & Cost Breakdown</h1>
+  <h1>P&L Sankey — Revenue & Cost Breakdown</h1>
   <div class="sub">Active Scenario &middot; 45_Combined &middot; Live from GRID API</div>
 </div>
 <div class="status-bar" id="statusBar">
@@ -93,7 +93,7 @@
 <div class="tooltip" id="tooltip"></div>
 
 <script>
-// ââ GRID API config ââ
+// -- GRID API config --
 const API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyZWFkX3dvcmtib29rcyI6IjE5NDM2ZGFhLTQxNmYtNDZhNi1hMDQ5LWFiMDYzYjdlYjNmMCIsImFwaV9rZXlfaWQiOiIzMDE4MzE2Ni01OTQyLTQ3MjktODI4Zi03OWVlNTA3NzY3YWEifQ.xtTkZH3mp1B5P93G1HDy8MAPpnAmsa-W3I1MqA-fcV8';
 const WB_ID  = 'cc27bd46-e525-450f-9925-5b442c0560a4';
 const API_URL = `https://api.grid.is/v1/workbooks/${WB_ID}/query`;
@@ -113,7 +113,7 @@ const ROW = {
 let data = {};
 let activeYear = '2026';
 
-// ââ Fetch live data ââ
+// -- Fetch live data --
 async function fetchData() {
   const refs = [];
   for (const year of years) {
@@ -149,7 +149,7 @@ async function fetchData() {
   }
 }
 
-// ââ Formatting ââ
+// -- Formatting --
 function fmt(v) {
   if (Math.abs(v) >= 1e6) return '\u20AC' + (v / 1e6).toFixed(1) + 'M';
   if (Math.abs(v) >= 1e3) return '\u20AC' + (v / 1e3).toFixed(0) + 'k';
@@ -157,7 +157,7 @@ function fmt(v) {
 }
 function pct(v) { return (v * 100).toFixed(1) + '%'; }
 
-// ââ Tooltip ââ
+// -- Tooltip --
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html) {
   tooltip.innerHTML = html;
@@ -167,7 +167,7 @@ function showTip(e, html) {
 }
 function hideTip() { tooltip.classList.remove('visible'); }
 
-// ââ Render ââ
+// -- Render --
 function renderSankey(year) {
   activeYear = year;
   const d = data[year];
@@ -382,7 +382,7 @@ function renderSankey(year) {
   `;
 }
 
-// ââ Init ââ
+// -- Init --
 function setStatus(state, msg) {
   const dot = document.getElementById('statusDot');
   const txt = document.getElementById('statusText');
