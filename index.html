@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P&L Sankey â Revenue & Cost Breakdown by Year</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+  }
+  .header { padding: 28px 40px 8px; }
+  .header h1 { font-size: 22px; font-weight: 600; color: #fff; }
+  .header .sub { font-size: 13px; color: #666; margin-top: 4px; }
+  .status-bar {
+    padding: 0 40px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+  }
+  .status-dot.loading { background: #fbbf24; animation: pulse 1s infinite; }
+  .status-dot.live { background: #4ade80; }
+  .status-dot.error { background: #f87171; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .year-tabs {
+    display: flex; gap: 4px; padding: 0 40px; margin-bottom: 0;
+  }
+  .year-tab {
+    padding: 8px 20px; border-radius: 8px 8px 0 0; cursor: pointer;
+    font-size: 14px; font-weight: 500; background: #1a1d27; color: #888;
+    border: 1px solid #2a2d37; border-bottom: none; transition: all 0.2s; user-select: none;
+  }
+  .year-tab:hover { background: #22253a; color: #bbb; }
+  .year-tab.active { background: #1e2130; color: #fff; border-color: #3a3f55; }
+  .chart-container {
+    background: #1e2130; margin: 0 40px 20px; border-radius: 0 12px 12px 12px;
+    border: 1px solid #2a2d37; padding: 20px; position: relative;
+  }
+  .chart-container .year-label {
+    position: absolute; top: 16px; left: 24px; font-size: 14px; color: #666;
+  }
+  svg { display: block; width: 100%; height: auto; }
+  .kpi-row {
+    display: flex; gap: 16px; padding: 0 40px 24px; flex-wrap: wrap;
+  }
+  .kpi {
+    background: #1a1d27; border: 1px solid #2a2d37; border-radius: 10px;
+    padding: 14px 20px; flex: 1; min-width: 140px;
+  }
+  .kpi-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .kpi-value.green { color: #4ade80; }
+  .kpi-value.blue { color: #60a5fa; }
+  .kpi-value.amber { color: #fbbf24; }
+  .kpi-value.red { color: #f87171; }
+  .kpi-value.purple { color: #c084fc; }
+  .kpi-sub { font-size: 11px; color: #666; margin-top: 2px; }
+  .tooltip {
+    position: fixed; background: #1a1d27; border: 1px solid #3a3f55;
+    border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #ddd;
+    pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 100;
+    white-space: nowrap;
+  }
+  .tooltip.visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>P&L Sankey â Revenue & Cost Breakdown</h1>
+  <div class="sub">Active Scenario &middot; 45_Combined &middot; Live from GRID API</div>
+</div>
+<div class="status-bar" id="statusBar">
+  <span class="status-dot loading" id="statusDot"></span>
+  <span id="statusText" style="color: #888;">Loading data from GRID...</span>
+</div>
+
+<div class="year-tabs" id="yearTabs"></div>
+<div class="chart-container">
+  <div class="year-label" id="yearLabel"></div>
+  <svg id="sankey" viewBox="0 0 900 560" preserveAspectRatio="xMidYMid meet"></svg>
+</div>
+<div class="kpi-row" id="kpis"></div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ââ GRID API config ââ
+const API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyZWFkX3dvcmtib29rcyI6IjE5NDM2ZGFhLTQxNmYtNDZhNi1hMDQ5LWFiMDYzYjdlYjNmMCIsImFwaV9rZXlfaWQiOiIzMDE4MzE2Ni01OTQyLTQ3MjktODI4Zi03OWVlNTA3NzY3YWEifQ.xtTkZH3mp1B5P93G1HDy8MAPpnAmsa-W3I1MqA-fcV8';
+const WB_ID  = 'cc27bd46-e525-450f-9925-5b442c0560a4';
+const API_URL = `https://api.grid.is/v1/workbooks/${WB_ID}/query`;
+
+const years = ['2026', '2027', '2028', '2029', '2030'];
+const yearCols = { '2026': 'B', '2027': 'C', '2028': 'D', '2029': 'E', '2030': 'F' };
+
+// Row map in 45_Combined (ACTIVE scenario rows 5-20)
+const ROW = {
+  bespokeRev: 5, modulesRev: 6, boardsRev: 7, totalRev: 8,
+  bespokeCOGS: 9, modulesCOGS: 10, boardsCOGS: 11, totalCOGS: 12,
+  grossProfit: 13, grossMargin: 14,
+  sm: 15, rd: 16, ga: 17, totalOpEx: 18,
+  ebitda: 19, ebitdaMargin: 20
+};
+
+let data = {};
+let activeYear = '2026';
+
+// ââ Fetch live data ââ
+async function fetchData() {
+  const refs = [];
+  for (const year of years) {
+    const col = yearCols[year];
+    for (const [key, row] of Object.entries(ROW)) {
+      refs.push(`45_Combined!${col}${row}`);
+    }
+  }
+
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ read: refs })
+  });
+
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  const json = await res.json();
+
+  // Parse into structured data
+  const keys = Object.keys(ROW);
+  let idx = 0;
+  for (const year of years) {
+    const d = {};
+    for (const key of keys) {
+      const cell = json.read[idx].data[0][0];
+      d[key] = cell.v || 0;
+      idx++;
+    }
+    data[year] = d;
+  }
+}
+
+// ââ Formatting ââ
+function fmt(v) {
+  if (Math.abs(v) >= 1e6) return '\u20AC' + (v / 1e6).toFixed(1) + 'M';
+  if (Math.abs(v) >= 1e3) return '\u20AC' + (v / 1e3).toFixed(0) + 'k';
+  return '\u20AC' + Math.round(v);
+}
+function pct(v) { return (v * 100).toFixed(1) + '%'; }
+
+// ââ Tooltip ââ
+const tooltip = document.getElementById('tooltip');
+function showTip(e, html) {
+  tooltip.innerHTML = html;
+  tooltip.classList.add('visible');
+  tooltip.style.left = (e.clientX + 14) + 'px';
+  tooltip.style.top = (e.clientY - 10) + 'px';
+}
+function hideTip() { tooltip.classList.remove('visible'); }
+
+// ââ Render ââ
+function renderSankey(year) {
+  activeYear = year;
+  const d = data[year];
+  if (!d) return;
+
+  const svg = document.getElementById('sankey');
+  svg.innerHTML = '';
+
+  document.getElementById('yearLabel').textContent = year + ' \u2014 Active Scenario';
+
+  const W = 900, H = 560;
+  const colX = [40, 280, 500, 740];
+  const nodeW = 22;
+  const topPad = 50;
+  const scale = (H - 80) / d.totalRev;
+
+  // Col 0: Revenue sources
+  const revSources = [
+    { label: 'Bespoke', val: d.bespokeRev, color: '#60a5fa' },
+    { label: 'Modules', val: d.modulesRev, color: '#818cf8' },
+    { label: 'Boards', val: d.boardsRev, color: '#a78bfa' },
+  ];
+  let y0 = topPad;
+  const revNodes = revSources.map(s => {
+    const h = s.val * scale;
+    const node = { ...s, x: colX[0], y: y0, h };
+    y0 += h + 12;
+    return node;
+  });
+
+  const totalRevH = d.totalRev * scale;
+  const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: '#3b82f6', x: colX[1], y: topPad, h: totalRevH };
+
+  // Col 2
+  const col2Items = [
+    { label: 'Gross Profit', val: d.grossProfit, color: '#4ade80' },
+    { label: 'Bespoke COGS', val: d.bespokeCOGS, color: '#f87171' },
+    { label: 'Modules COGS', val: d.modulesCOGS, color: '#fb923c' },
+    { label: 'Boards COGS', val: d.boardsCOGS, color: '#fbbf24' },
+  ];
+  let y2 = topPad;
+  const col2Nodes = col2Items.map(s => {
+    const h = s.val * scale;
+    const node = { ...s, x: colX[2], y: y2, h };
+    y2 += h + 8;
+    return node;
+  });
+
+  // Col 3
+  const col3Items = [
+    { label: 'EBITDA', val: d.ebitda, color: '#22d3ee' },
+    { label: 'S&M', val: d.sm, color: '#f472b6' },
+    { label: 'R&D', val: d.rd, color: '#e879f9' },
+    { label: 'G&A', val: d.ga, color: '#c084fc' },
+  ];
+  let y3 = topPad;
+  const col3Nodes = col3Items.map(s => {
+    const h = s.val * scale;
+    const node = { ...s, x: colX[3], y: y3, h };
+    y3 += h + 8;
+    return node;
+  });
+
+  function flowPath(sx, sy, sh, tx, ty, th) {
+    const sR = sx + nodeW, tL = tx, mx = (sR + tL) / 2;
+    return `M ${sR} ${sy} C ${mx} ${sy}, ${mx} ${ty}, ${tL} ${ty} L ${tL} ${ty+th} C ${mx} ${ty+th}, ${mx} ${sy+sh}, ${sR} ${sy+sh} Z`;
+  }
+
+  // Flows
+  let off1 = topPad;
+  const flows1 = revNodes.map(n => {
+    const th = n.val * scale;
+    const p = flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th);
+    off1 += th;
+    return { path: p, color: n.color, from: n.label, to: 'Total Revenue', val: n.val };
+  });
+
+  let off2 = topPad;
+  const flows2 = col2Nodes.map(n => {
+    const sh = n.val * scale;
+    const p = flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h);
+    off2 += sh;
+    return { path: p, color: n.color, from: 'Total Revenue', to: n.label, val: n.val };
+  });
+
+  let off3 = col2Nodes[0].y;
+  const flows3 = col3Nodes.map(n => {
+    const sh = n.val * scale;
+    const p = flowPath(col2Nodes[0].x, off3, sh, n.x, n.y, n.h);
+    off3 += sh;
+    return { path: p, color: n.color, from: 'Gross Profit', to: n.label, val: n.val };
+  });
+
+  [...flows1, ...flows2, ...flows3].forEach(f => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('d', f.path);
+    el.setAttribute('fill', f.color);
+    el.setAttribute('fill-opacity', '0.22');
+    el.setAttribute('stroke', f.color);
+    el.setAttribute('stroke-opacity', '0.3');
+    el.setAttribute('stroke-width', '0.5');
+    el.style.cursor = 'pointer';
+    el.style.transition = 'fill-opacity 0.15s';
+    el.addEventListener('mouseenter', e => {
+      el.setAttribute('fill-opacity', '0.45');
+      showTip(e, `<strong>${f.from} \u2192 ${f.to}</strong><br>${fmt(f.val)} (${pct(f.val / d.totalRev)} of rev)`);
+    });
+    el.addEventListener('mousemove', e => {
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top = (e.clientY - 10) + 'px';
+    });
+    el.addEventListener('mouseleave', () => {
+      el.setAttribute('fill-opacity', '0.22');
+      hideTip();
+    });
+    svg.appendChild(el);
+  });
+
+  // Nodes
+  [...revNodes, totalRevNode, ...col2Nodes, ...col3Nodes].forEach(n => {
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', n.x);
+    rect.setAttribute('y', n.y);
+    rect.setAttribute('width', nodeW);
+    rect.setAttribute('height', Math.max(n.h, 3));
+    rect.setAttribute('rx', 3);
+    rect.setAttribute('fill', n.color);
+    rect.setAttribute('fill-opacity', '0.9');
+    rect.style.cursor = 'pointer';
+    rect.addEventListener('mouseenter', e => {
+      rect.setAttribute('fill-opacity', '1');
+      showTip(e, `<strong>${n.label}</strong><br>${fmt(n.val)}<br>${pct(n.val / d.totalRev)} of revenue`);
+    });
+    rect.addEventListener('mousemove', e => {
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top = (e.clientY - 10) + 'px';
+    });
+    rect.addEventListener('mouseleave', () => {
+      rect.setAttribute('fill-opacity', '0.9');
+      hideTip();
+    });
+    svg.appendChild(rect);
+
+    const textX = n.x === colX[0] ? n.x - 10 : n.x + nodeW + 10;
+    const anchor = n.x === colX[0] ? 'end' : 'start';
+
+    if (n.h > 14) {
+      const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t1.setAttribute('x', textX); t1.setAttribute('y', n.y + n.h/2 - 7);
+      t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#ccc');
+      t1.setAttribute('font-size', '12'); t1.setAttribute('font-weight', '500');
+      t1.textContent = n.label;
+      svg.appendChild(t1);
+
+      const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t2.setAttribute('x', textX); t2.setAttribute('y', n.y + n.h/2 + 8);
+      t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', '#888');
+      t2.setAttribute('font-size', '11');
+      t2.textContent = fmt(n.val);
+      svg.appendChild(t2);
+    } else {
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', textX); t.setAttribute('y', n.y + n.h/2 + 4);
+      t.setAttribute('text-anchor', anchor); t.setAttribute('fill', '#aaa');
+      t.setAttribute('font-size', '11');
+      t.textContent = n.label + ' ' + fmt(n.val);
+      svg.appendChild(t);
+    }
+  });
+
+  // Column headers
+  [
+    { x: colX[0] + nodeW/2, label: 'REVENUE SOURCES' },
+    { x: colX[1] + nodeW/2, label: 'TOTAL' },
+    { x: colX[2] + nodeW/2, label: 'MARGIN / COGS' },
+    { x: colX[3] + nodeW/2, label: 'EBITDA / OPEX' },
+  ].forEach(h => {
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('x', h.x); t.setAttribute('y', 28);
+    t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', '#555');
+    t.setAttribute('font-size', '10'); t.setAttribute('letter-spacing', '1');
+    t.textContent = h.label;
+    svg.appendChild(t);
+  });
+
+  // KPIs
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi">
+      <div class="kpi-label">Total Revenue</div>
+      <div class="kpi-value blue">${fmt(d.totalRev)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Gross Profit</div>
+      <div class="kpi-value green">${fmt(d.grossProfit)}</div>
+      <div class="kpi-sub">Margin: ${pct(d.grossMargin)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Total OpEx</div>
+      <div class="kpi-value amber">${fmt(d.totalOpEx)}</div>
+      <div class="kpi-sub">${pct(d.totalOpEx / d.totalRev)} of revenue</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">EBITDA</div>
+      <div class="kpi-value ${d.ebitda >= 0 ? 'green' : 'red'}">${fmt(d.ebitda)}</div>
+      <div class="kpi-sub">Margin: ${pct(d.ebitdaMargin)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Revenue Mix</div>
+      <div class="kpi-value purple">${pct(d.modulesRev / d.totalRev)}</div>
+      <div class="kpi-sub">Modules share</div>
+    </div>
+  `;
+}
+
+// ââ Init ââ
+function setStatus(state, msg) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'status-dot ' + state;
+  txt.textContent = msg;
+}
+
+const tabsEl = document.getElementById('yearTabs');
+years.forEach((y, i) => {
+  const tab = document.createElement('div');
+  tab.className = 'year-tab' + (i === 0 ? ' active' : '');
+  tab.textContent = y;
+  tab.onclick = () => {
+    document.querySelectorAll('.year-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    renderSankey(y);
+  };
+  tabsEl.appendChild(tab);
+});
+
+(async () => {
+  try {
+    await fetchData();
+    const now = new Date().toLocaleTimeString();
+    setStatus('live', `Live \u2014 last fetched ${now}`);
+    renderSankey(activeYear);
+  } catch (err) {
+    setStatus('error', `Failed to load: ${err.message}. Check API key / CORS.`);
+    console.error(err);
+  }
+})();
+</script>
+</body>
+</html>
