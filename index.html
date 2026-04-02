@@ -44,9 +44,10 @@
   }
   .scenario-tab:hover { background: #22253a; color: #bbb; }
   .scenario-tab.active { color: #fff; border-color: #3a3f55; }
-  .scenario-tab.active[data-scenario="active"] { background: #1b3a2a; border-color: #4ade80; color: #4ade80; }
   .scenario-tab.active[data-scenario="bull"] { background: #2a2a1b; border-color: #fbbf24; color: #fbbf24; }
   .scenario-tab.active[data-scenario="base"] { background: #1b2a3a; border-color: #60a5fa; color: #60a5fa; }
+  .scenario-tab.active[data-scenario="bear"] { background: #3a1b1b; border-color: #f87171; color: #f87171; }
+  .scenario-tab.active[data-scenario="organic"] { background: #1b3a2a; border-color: #4ade80; color: #4ade80; }
   .year-tabs {
     display: flex; gap: 4px;
   }
@@ -93,7 +94,7 @@
 
 <div class="header">
   <h1>P&L Sankey — Revenue & Cost Breakdown</h1>
-  <div class="sub" id="subtitle">Active Scenario &middot; 45_Combined &middot; Live from GRID API</div>
+  <div class="sub" id="subtitle">Bull Scenario &middot; 45_Combined &middot; Live from GRID API</div>
 </div>
 <div class="status-bar" id="statusBar">
   <span class="status-dot loading" id="statusDot"></span>
@@ -136,9 +137,10 @@ const BASE_ROW = {
 };
 
 const SCENARIOS = {
-  active: { label: 'Active', startRow: 5 },
-  bull:   { label: 'Bull',   startRow: 30 },
-  base:   { label: 'Base',   startRow: 59 }
+  bull:    { label: 'Bull',    startRow: 30 },
+  base:    { label: 'Base',    startRow: 59 },
+  bear:    { label: 'Bear',    startRow: 88 },
+  organic: { label: 'Organic', startRow: 114 }
 };
 
 function getRowMap(scenario) {
@@ -152,7 +154,7 @@ function getRowMap(scenario) {
 
 let dataCache = {};
 let activeYear = '2026';
-let activeScenario = 'active';
+let activeScenario = 'bull';
 
 // -- Fetch live data --
 async function fetchData(scenario) {
