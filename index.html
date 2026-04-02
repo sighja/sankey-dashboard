@@ -31,8 +31,24 @@
   .status-dot.live { background: #4ade80; }
   .status-dot.error { background: #f87171; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .controls-row {
+    display: flex; align-items: flex-end; gap: 24px; padding: 0 40px; margin-bottom: 0;
+  }
+  .control-group { display: flex; flex-direction: column; gap: 4px; }
+  .control-label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; padding-left: 4px; }
+  .scenario-tabs { display: flex; gap: 4px; }
+  .scenario-tab {
+    padding: 6px 16px; border-radius: 6px; cursor: pointer;
+    font-size: 12px; font-weight: 500; background: #1a1d27; color: #888;
+    border: 1px solid #2a2d37; transition: all 0.2s; user-select: none;
+  }
+  .scenario-tab:hover { background: #22253a; color: #bbb; }
+  .scenario-tab.active { color: #fff; border-color: #3a3f55; }
+  .scenario-tab.active[data-scenario="active"] { background: #1b3a2a; border-color: #4ade80; color: #4ade80; }
+  .scenario-tab.active[data-scenario="bull"] { background: #2a2a1b; border-color: #fbbf24; color: #fbbf24; }
+  .scenario-tab.active[data-scenario="base"] { background: #1b2a3a; border-color: #60a5fa; color: #60a5fa; }
   .year-tabs {
-    display: flex; gap: 4px; padding: 0 40px; margin-bottom: 0;
+    display: flex; gap: 4px;
   }
   .year-tab {
     padding: 8px 20px; border-radius: 8px 8px 0 0; cursor: pointer;
@@ -77,14 +93,23 @@
 
 <div class="header">
   <h1>P&L Sankey — Revenue & Cost Breakdown</h1>
-  <div class="sub">Active Scenario &middot; 45_Combined &middot; Live from GRID API</div>
+  <div class="sub" id="subtitle">Active Scenario &middot; 45_Combined &middot; Live from GRID API</div>
 </div>
 <div class="status-bar" id="statusBar">
   <span class="status-dot loading" id="statusDot"></span>
   <span id="statusText" style="color: #888;">Loading data from GRID...</span>
 </div>
 
-<div class="year-tabs" id="yearTabs"></div>
+<div class="controls-row">
+  <div class="control-group">
+    <div class="control-label">Scenario</div>
+    <div class="scenario-tabs" id="scenarioTabs"></div>
+  </div>
+  <div class="control-group">
+    <div class="control-label">Year</div>
+    <div class="year-tabs" id="yearTabs"></div>
+  </div>
+</div>
 <div class="chart-container">
   <div class="year-label" id="yearLabel"></div>
   <svg id="sankey" viewBox="0 0 900 560" preserveAspectRatio="xMidYMid meet"></svg>
@@ -101,20 +126,40 @@ const API_URL = `https://api.grid.is/v1/workbooks/${WB_ID}/query`;
 const years = ['2026', '2027', '2028', '2029', '2030'];
 const yearCols = { '2026': 'B', '2027': 'C', '2028': 'D', '2029': 'E', '2030': 'F' };
 
-// Row map in 45_Combined (ACTIVE scenario rows 5-20)
-const ROW = {
-  bespokeRev: 5, modulesRev: 6, boardsRev: 7, totalRev: 8,
-  bespokeCOGS: 9, modulesCOGS: 10, boardsCOGS: 11, totalCOGS: 12,
-  grossProfit: 13, grossMargin: 14,
-  sm: 15, rd: 16, ga: 17, totalOpEx: 18,
-  ebitda: 19, ebitdaMargin: 20
+// Base row offsets within each scenario block
+const BASE_ROW = {
+  bespokeRev: 0, modulesRev: 1, boardsRev: 2, totalRev: 3,
+  bespokeCOGS: 4, modulesCOGS: 5, boardsCOGS: 6, totalCOGS: 7,
+  grossProfit: 8, grossMargin: 9,
+  sm: 10, rd: 11, ga: 12, totalOpEx: 13,
+  ebitda: 14, ebitdaMargin: 15
 };
 
-let data = {};
+const SCENARIOS = {
+  active: { label: 'Active', startRow: 5 },
+  bull:   { label: 'Bull',   startRow: 30 },
+  base:   { label: 'Base',   startRow: 59 }
+};
+
+function getRowMap(scenario) {
+  const start = SCENARIOS[scenario].startRow;
+  const rows = {};
+  for (const [key, offset] of Object.entries(BASE_ROW)) {
+    rows[key] = start + offset;
+  }
+  return rows;
+}
+
+let dataCache = {};
 let activeYear = '2026';
+let activeScenario = 'active';
 
 // -- Fetch live data --
-async function fetchData() {
+async function fetchData(scenario) {
+  scenario = scenario || activeScenario;
+  if (dataCache[scenario]) return dataCache[scenario];
+
+  const ROW = getRowMap(scenario);
   const refs = [];
   for (const year of years) {
     const col = yearCols[year];
@@ -135,7 +180,7 @@ async function fetchData() {
   if (!res.ok) throw new Error(`API ${res.status}`);
   const json = await res.json();
 
-  // Parse into structured data
+  const result = {};
   const keys = Object.keys(ROW);
   let idx = 0;
   for (const year of years) {
@@ -145,8 +190,11 @@ async function fetchData() {
       d[key] = cell.v || 0;
       idx++;
     }
-    data[year] = d;
+    result[year] = d;
   }
+
+  dataCache[scenario] = result;
+  return result;
 }
 
 // -- Formatting --
@@ -170,13 +218,17 @@ function hideTip() { tooltip.classList.remove('visible'); }
 // -- Render --
 function renderSankey(year) {
   activeYear = year;
-  const d = data[year];
+  const scenarioData = dataCache[activeScenario];
+  if (!scenarioData) return;
+  const d = scenarioData[year];
   if (!d) return;
 
   const svg = document.getElementById('sankey');
   svg.innerHTML = '';
 
-  document.getElementById('yearLabel').textContent = year + ' \u2014 Active Scenario';
+  const scenarioLabel = SCENARIOS[activeScenario].label;
+  document.getElementById('yearLabel').textContent = year + ' \u2014 ' + scenarioLabel + ' Scenario';
+  document.getElementById('subtitle').textContent = scenarioLabel + ' Scenario \u00B7 45_Combined \u00B7 Live from GRID API';
 
   const W = 900, H = 560;
   const colX = [40, 280, 500, 740];
@@ -390,6 +442,32 @@ function setStatus(state, msg) {
   txt.textContent = msg;
 }
 
+// Build scenario tabs
+const scenarioTabsEl = document.getElementById('scenarioTabs');
+Object.entries(SCENARIOS).forEach(([key, cfg]) => {
+  const tab = document.createElement('div');
+  tab.className = 'scenario-tab' + (key === activeScenario ? ' active' : '');
+  tab.dataset.scenario = key;
+  tab.textContent = cfg.label;
+  tab.onclick = async () => {
+    if (key === activeScenario) return;
+    activeScenario = key;
+    document.querySelectorAll('.scenario-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    setStatus('loading', 'Switching to ' + cfg.label + ' scenario...');
+    try {
+      await fetchData(key);
+      const now = new Date().toLocaleTimeString();
+      setStatus('live', `Live \u2014 last fetched ${now}`);
+      renderSankey(activeYear);
+    } catch (err) {
+      setStatus('error', `Failed: ${err.message}`);
+    }
+  };
+  scenarioTabsEl.appendChild(tab);
+});
+
+// Build year tabs
 const tabsEl = document.getElementById('yearTabs');
 years.forEach((y, i) => {
   const tab = document.createElement('div');
@@ -405,7 +483,7 @@ years.forEach((y, i) => {
 
 (async () => {
   try {
-    await fetchData();
+    await fetchData(activeScenario);
     const now = new Date().toLocaleTimeString();
     setStatus('live', `Live \u2014 last fetched ${now}`);
     renderSankey(activeYear);
