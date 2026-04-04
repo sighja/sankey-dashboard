@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>P&L Sankey — Revenue & Cost Breakdown by Year</title>
+<title>P&L Sankey â Revenue & Cost Breakdown by Year</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -31,25 +31,25 @@
   .status-dot.live { background: #4ade80; }
   .status-dot.error { background: #f87171; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-  .controls-row {
-    display: flex; align-items: flex-end; gap: 24px; padding: 0 40px; margin-bottom: 0;
+  .controls {
+    display: flex; gap: 24px; padding: 0 40px; margin-bottom: 8px; align-items: center;
   }
-  .control-group { display: flex; flex-direction: column; gap: 4px; }
-  .control-label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; padding-left: 4px; }
+  .control-group { display: flex; gap: 4px; align-items: center; }
+  .control-label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 8px; }
   .scenario-tabs { display: flex; gap: 4px; }
   .scenario-tab {
     padding: 6px 16px; border-radius: 6px; cursor: pointer;
-    font-size: 12px; font-weight: 500; background: #1a1d27; color: #888;
+    font-size: 13px; font-weight: 500; background: #1a1d27; color: #888;
     border: 1px solid #2a2d37; transition: all 0.2s; user-select: none;
   }
   .scenario-tab:hover { background: #22253a; color: #bbb; }
-  .scenario-tab.active { color: #fff; border-color: #3a3f55; }
-  .scenario-tab.active[data-scenario="bull"] { background: #2a2a1b; border-color: #fbbf24; color: #fbbf24; }
-  .scenario-tab.active[data-scenario="base"] { background: #1b2a3a; border-color: #60a5fa; color: #60a5fa; }
-  .scenario-tab.active[data-scenario="bear"] { background: #3a1b1b; border-color: #f87171; color: #f87171; }
-  .scenario-tab.active[data-scenario="organic"] { background: #1b3a2a; border-color: #4ade80; color: #4ade80; }
+  .scenario-tab.active { color: #fff; }
+  .scenario-tab.active[data-scenario="Bull"] { background: #1a3a2a; border-color: #4ade80; color: #4ade80; }
+  .scenario-tab.active[data-scenario="Base"] { background: #1a2a3a; border-color: #60a5fa; color: #60a5fa; }
+  .scenario-tab.active[data-scenario="Bear"] { background: #3a2020; border-color: #f87171; color: #f87171; }
+  .scenario-tab.active[data-scenario="Organic"] { background: #2a2a1a; border-color: #fbbf24; color: #fbbf24; }
   .year-tabs {
-    display: flex; gap: 4px;
+    display: flex; gap: 4px; padding: 0 40px; margin-bottom: 0;
   }
   .year-tab {
     padding: 8px 20px; border-radius: 8px 8px 0 0; cursor: pointer;
@@ -93,24 +93,22 @@
 <body>
 
 <div class="header">
-  <h1>P&L Sankey — Revenue & Cost Breakdown</h1>
-  <div class="sub" id="subtitle">Bull Scenario &middot; 45_Combined &middot; Live from GRID API</div>
+  <h1>P&L Sankey â Revenue & Cost Breakdown</h1>
+  <div class="sub">45_Combined &middot; Sourced from Grinn MCP Server via Microsoft Graph API</div>
 </div>
 <div class="status-bar" id="statusBar">
   <span class="status-dot loading" id="statusDot"></span>
-  <span id="statusText" style="color: #888;">Loading data from GRID...</span>
+  <span id="statusText" style="color: #888;">Loading data...</span>
 </div>
 
-<div class="controls-row">
+<div class="controls">
   <div class="control-group">
-    <div class="control-label">Scenario</div>
+    <span class="control-label">Scenario</span>
     <div class="scenario-tabs" id="scenarioTabs"></div>
   </div>
-  <div class="control-group">
-    <div class="control-label">Year</div>
-    <div class="year-tabs" id="yearTabs"></div>
-  </div>
 </div>
+
+<div class="year-tabs" id="yearTabs"></div>
 <div class="chart-container">
   <div class="year-label" id="yearLabel"></div>
   <svg id="sankey" viewBox="0 0 900 560" preserveAspectRatio="xMidYMid meet"></svg>
@@ -119,16 +117,26 @@
 <div class="tooltip" id="tooltip"></div>
 
 <script>
-// -- GRID API config --
-const API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyZWFkX3dvcmtib29rcyI6IjE5NDM2ZGFhLTQxNmYtNDZhNi1hMDQ5LWFiMDYzYjdlYjNmMCIsImFwaV9rZXlfaWQiOiIzMDE4MzE2Ni01OTQyLTQ3MjktODI4Zi03OWVlNTA3NzY3YWEifQ.xtTkZH3mp1B5P93G1HDy8MAPpnAmsa-W3I1MqA-fcV8';
-const WB_ID  = 'cc27bd46-e525-450f-9925-5b442c0560a4';
-const API_URL = `https://api.grid.is/v1/workbooks/${WB_ID}/query`;
+// ââ MCP Server config (Graph API via grinn-mcp) ââ
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+const DRIVE_ITEM_PATH = 'Grinn/Grinn_v17_r41.xlsm';
+const WORKBOOK_URL = `${GRAPH_BASE}/me/drive/root:/${DRIVE_ITEM_PATH}:/workbook`;
+const SHEET = '45_Combined';
+
+// Azure AD / MSAL config
+const CLIENT_ID = '41358f91-0b50-4cb7-bde8-60d546432369';
+const TENANT_ID = '4e94611e-6eea-4f3d-951d-579ac8064d5c';
+const SCOPES = ['Files.ReadWrite'];
+
+// Snapshot block start rows in 45_Combined (same layout as MCP server)
+const SNAPSHOT_STARTS = { Bull: 30, Base: 59, Bear: 88, Organic: 114 };
+const N_ROWS = 24;
 
 const years = ['2026', '2027', '2028', '2029', '2030'];
 const yearCols = { '2026': 'B', '2027': 'C', '2028': 'D', '2029': 'E', '2030': 'F' };
 
-// Base row offsets within each scenario block
-const BASE_ROW = {
+// Row offsets within each snapshot block (0-indexed from block start)
+const ROW_OFFSET = {
   bespokeRev: 0, modulesRev: 1, boardsRev: 2, totalRev: 3,
   bespokeCOGS: 4, modulesCOGS: 5, boardsCOGS: 6, totalCOGS: 7,
   grossProfit: 8, grossMargin: 9,
@@ -136,70 +144,115 @@ const BASE_ROW = {
   ebitda: 14, ebitdaMargin: 15
 };
 
-const SCENARIOS = {
-  bull:    { label: 'Bull',    startRow: 30 },
-  base:    { label: 'Base',    startRow: 59 },
-  bear:    { label: 'Bear',    startRow: 88 },
-  organic: { label: 'Organic', startRow: 114 }
-};
-
-function getRowMap(scenario) {
-  const start = SCENARIOS[scenario].startRow;
-  const rows = {};
-  for (const [key, offset] of Object.entries(BASE_ROW)) {
-    rows[key] = start + offset;
-  }
-  return rows;
-}
-
-let dataCache = {};
+const scenarios = ['Bull', 'Base', 'Bear', 'Organic'];
+let allData = {};       // { scenario: { year: { metric: value } } }
+let activeScenario = 'Base';
 let activeYear = '2026';
-let activeScenario = 'bull';
+let msalInstance = null;
+let accessToken = null;
 
-// -- Fetch live data --
-async function fetchData(scenario) {
-  scenario = scenario || activeScenario;
-  if (dataCache[scenario]) return dataCache[scenario];
-
-  const ROW = getRowMap(scenario);
-  const refs = [];
-  for (const year of years) {
-    const col = yearCols[year];
-    for (const [key, row] of Object.entries(ROW)) {
-      refs.push(`45_Combined!${col}${row}`);
-    }
+// ââ MSAL Auth ââ
+async function initAuth() {
+  // Dynamically load MSAL.js
+  if (!window.msal) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js';
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
   }
 
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json'
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId: CLIENT_ID,
+      authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+      redirectUri: window.location.origin + window.location.pathname,
     },
-    body: JSON.stringify({ read: refs })
+    cache: { cacheLocation: 'localStorage' },
   });
 
-  if (!res.ok) throw new Error(`API ${res.status}`);
-  const json = await res.json();
+  await msalInstance.initialize();
 
-  const result = {};
-  const keys = Object.keys(ROW);
-  let idx = 0;
-  for (const year of years) {
-    const d = {};
-    for (const key of keys) {
-      const cell = json.read[idx].data[0][0];
-      d[key] = cell.v || 0;
-      idx++;
+  // Handle redirect response (if returning from login)
+  try {
+    const resp = await msalInstance.handleRedirectPromise();
+    if (resp) {
+      accessToken = resp.accessToken;
+      return;
     }
-    result[year] = d;
+  } catch (e) { console.warn('Redirect handling:', e); }
+
+  // Try silent token
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    try {
+      const result = await msalInstance.acquireTokenSilent({
+        scopes: SCOPES,
+        account: accounts[0],
+      });
+      accessToken = result.accessToken;
+      return;
+    } catch (e) { console.warn('Silent auth failed, will prompt:', e); }
   }
 
-  dataCache[scenario] = result;
-  return result;
+  // Interactive login via popup
+  try {
+    const result = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
+    accessToken = result.accessToken;
+  } catch (e) {
+    throw new Error('Authentication failed: ' + e.message);
+  }
 }
 
-// -- Formatting --
+// ââ Graph API calls ââ
+async function graphGet(url) {
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${accessToken}` }
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Graph API ${res.status}: ${text.substring(0, 200)}`);
+  }
+  return res.json();
+}
+
+async function readRange(sheet, address) {
+  const url = `${WORKBOOK_URL}/worksheets('${sheet}')/range(address='${address}')`;
+  const data = await graphGet(url);
+  return data.values || [];
+}
+
+// ââ Fetch all scenarios from snapshot blocks ââ
+async function fetchAllScenarios() {
+  const keys = Object.keys(ROW_OFFSET);
+
+  // Read all 4 snapshot blocks in parallel
+  const reads = scenarios.map(async (scenario) => {
+    const start = SNAPSHOT_STARTS[scenario];
+    const end = start + N_ROWS - 1;
+    const address = `B${start}:F${end}`;
+    const values = await readRange(SHEET, address);
+
+    const scenarioData = {};
+    for (let yi = 0; yi < years.length; yi++) {
+      const yearData = {};
+      for (const [key, offset] of Object.entries(ROW_OFFSET)) {
+        yearData[key] = values[offset] ? (values[offset][yi] || 0) : 0;
+      }
+      scenarioData[years[yi]] = yearData;
+    }
+    return { scenario, data: scenarioData };
+  });
+
+  const results = await Promise.all(reads);
+  for (const r of results) {
+    allData[r.scenario] = r.data;
+  }
+}
+
+// ââ Formatting ââ
 function fmt(v) {
   if (Math.abs(v) >= 1e6) return '\u20AC' + (v / 1e6).toFixed(1) + 'M';
   if (Math.abs(v) >= 1e3) return '\u20AC' + (v / 1e3).toFixed(0) + 'k';
@@ -207,7 +260,7 @@ function fmt(v) {
 }
 function pct(v) { return (v * 100).toFixed(1) + '%'; }
 
-// -- Tooltip --
+// ââ Tooltip ââ
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html) {
   tooltip.innerHTML = html;
@@ -217,20 +270,16 @@ function showTip(e, html) {
 }
 function hideTip() { tooltip.classList.remove('visible'); }
 
-// -- Render --
+// ââ Render ââ
 function renderSankey(year) {
   activeYear = year;
-  const scenarioData = dataCache[activeScenario];
-  if (!scenarioData) return;
-  const d = scenarioData[year];
+  const d = allData[activeScenario] && allData[activeScenario][year];
   if (!d) return;
 
   const svg = document.getElementById('sankey');
   svg.innerHTML = '';
 
-  const scenarioLabel = SCENARIOS[activeScenario].label;
-  document.getElementById('yearLabel').textContent = year + ' \u2014 ' + scenarioLabel + ' Scenario';
-  document.getElementById('subtitle').textContent = scenarioLabel + ' Scenario \u00B7 45_Combined \u00B7 Live from GRID API';
+  document.getElementById('yearLabel').textContent = year + ' \u2014 ' + activeScenario + ' Scenario';
 
   const W = 900, H = 560;
   const colX = [40, 280, 500, 740];
@@ -436,7 +485,7 @@ function renderSankey(year) {
   `;
 }
 
-// -- Init --
+// ââ Init ââ
 function setStatus(state, msg) {
   const dot = document.getElementById('statusDot');
   const txt = document.getElementById('statusText');
@@ -444,32 +493,23 @@ function setStatus(state, msg) {
   txt.textContent = msg;
 }
 
-// Build scenario tabs
+// Scenario tabs
 const scenarioTabsEl = document.getElementById('scenarioTabs');
-Object.entries(SCENARIOS).forEach(([key, cfg]) => {
+scenarios.forEach((s) => {
   const tab = document.createElement('div');
-  tab.className = 'scenario-tab' + (key === activeScenario ? ' active' : '');
-  tab.dataset.scenario = key;
-  tab.textContent = cfg.label;
-  tab.onclick = async () => {
-    if (key === activeScenario) return;
-    activeScenario = key;
+  tab.className = 'scenario-tab' + (s === activeScenario ? ' active' : '');
+  tab.setAttribute('data-scenario', s);
+  tab.textContent = s;
+  tab.onclick = () => {
+    activeScenario = s;
     document.querySelectorAll('.scenario-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
-    setStatus('loading', 'Switching to ' + cfg.label + ' scenario...');
-    try {
-      await fetchData(key);
-      const now = new Date().toLocaleTimeString();
-      setStatus('live', `Live \u2014 last fetched ${now}`);
-      renderSankey(activeYear);
-    } catch (err) {
-      setStatus('error', `Failed: ${err.message}`);
-    }
+    renderSankey(activeYear);
   };
   scenarioTabsEl.appendChild(tab);
 });
 
-// Build year tabs
+// Year tabs
 const tabsEl = document.getElementById('yearTabs');
 years.forEach((y, i) => {
   const tab = document.createElement('div');
@@ -483,14 +523,35 @@ years.forEach((y, i) => {
   tabsEl.appendChild(tab);
 });
 
+// URL params: ?scenario=Bull&year=2028
+const params = new URLSearchParams(window.location.search);
+if (params.get('scenario') && scenarios.includes(params.get('scenario'))) {
+  activeScenario = params.get('scenario');
+}
+if (params.get('year') && years.includes(params.get('year'))) {
+  activeYear = params.get('year');
+}
+
 (async () => {
   try {
-    await fetchData(activeScenario);
+    setStatus('loading', 'Authenticating with Microsoft Graph API...');
+    await initAuth();
+    setStatus('loading', 'Fetching scenario data from Grinn model...');
+    await fetchAllScenarios();
     const now = new Date().toLocaleTimeString();
-    setStatus('live', `Live \u2014 last fetched ${now}`);
+    setStatus('live', `Live from Graph API \u2014 last fetched ${now}`);
+
+    // Sync active tabs with URL params
+    document.querySelectorAll('.scenario-tab').forEach(t => {
+      t.classList.toggle('active', t.getAttribute('data-scenario') === activeScenario);
+    });
+    document.querySelectorAll('.year-tab').forEach(t => {
+      t.classList.toggle('active', t.textContent === activeYear);
+    });
+
     renderSankey(activeYear);
   } catch (err) {
-    setStatus('error', `Failed to load: ${err.message}. Check API key / CORS.`);
+    setStatus('error', `Failed: ${err.message}`);
     console.error(err);
   }
 })();
