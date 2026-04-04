@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>P&L Sankey â Revenue & Cost Breakdown by Year</title>
+<title>P&L Sankey &#8212; Revenue & Cost Breakdown by Year</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -93,7 +93,7 @@
 <body>
 
 <div class="header">
-  <h1>P&L Sankey â Revenue & Cost Breakdown</h1>
+  <h1>P&L Sankey &#8212; Revenue & Cost Breakdown</h1>
   <div class="sub">45_Combined &middot; Sourced from Grinn MCP Server via Microsoft Graph API</div>
 </div>
 <div class="status-bar" id="statusBar">
@@ -157,9 +157,9 @@ async function initAuth() {
   if (!window.msal) {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js';
+      s.src = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js';
       s.onload = resolve;
-      s.onerror = reject;
+      s.onerror = () => reject(new Error('Failed to load MSAL library from CDN'));
       document.head.appendChild(s);
     });
   }
