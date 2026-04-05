@@ -202,7 +202,7 @@ async function initAuth() {
     const result = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
     accessToken = result.accessToken;
   } catch (e) {
-    throw new Error('Authentication failed: ' + e.message);
+    await msalInstance.acquireTokenRedirect({ scopes: SCOPES }); return;
   }
 }
 
