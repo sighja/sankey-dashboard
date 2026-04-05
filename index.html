@@ -302,7 +302,7 @@ function renderSankey(year) {
 
   const W = 960, H = 560;
   const colX = [120, 320, 540, 780];
-  const nodeW = 6;
+  const nodeW = 24;
   const topPad = 50;
 
   // Defs for gradients
@@ -315,9 +315,9 @@ function renderSankey(year) {
     g.setAttribute('id', id);
     g.setAttribute('gradientUnits', 'userSpaceOnUse');
     const s1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-    s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', c1); s1.setAttribute('stop-opacity', '0.35');
+    s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', c1); s1.setAttribute('stop-opacity', '0.45');
     const s2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-    s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', c2); s2.setAttribute('stop-opacity', '0.35');
+    s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', c2); s2.setAttribute('stop-opacity', '0.45');
     g.appendChild(s1); g.appendChild(s2); defs.appendChild(g);
     return id;
   }
@@ -332,7 +332,7 @@ function renderSankey(year) {
 
   const availH = H - topPad - 20;
   const scale = (availH * 0.70) / Math.max(d.totalRev, 1);
-  const flowGap = 8; // visual gap between ribbon flows
+  const flowGap = 16; // visual gap between ribbon flows
 
   // Helper: stack nodes compactly, centered on a given Y midpoint
   // Bars + gaps sum to the parent bar height — Sankey flow conservation
@@ -351,10 +351,10 @@ function renderSankey(year) {
   }
 
   // Total Revenue bar — centered in chart
-  const totalRevH = d.totalRev * scale;
+  const totalRevH = d.totalRev * scale * 0.55; // shortened to spread flows
   const chartMidY = topPad + availH / 2;
   const totalRevY = chartMidY - totalRevH / 2;
-  const totalRevNode = { label: 'Revenue', val: d.totalRev, color: '#1e3a5f', x: colX[1], y: totalRevY, h: totalRevH, barW: 18 };
+  const totalRevNode = { label: 'Revenue', val: d.totalRev, color: '#1e3a5f', x: colX[1], y: totalRevY, h: totalRevH, barW: 30 };
 
   // Col 0: Revenue sources — stacked compactly, centered on Revenue bar
   const revSources = [
@@ -439,59 +439,75 @@ function renderSankey(year) {
     rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
     rect.setAttribute('width', n.barW || nodeW); rect.setAttribute('height', Math.max(n.h, 4));
     rect.setAttribute('rx', 2); rect.setAttribute('fill', n.color);
-    rect.setAttribute('fill-opacity', '0.45');
+    rect.setAttribute('fill-opacity', '0.75');
     rect.style.cursor = 'pointer';
-    rect.addEventListener('mouseenter', e => { rect.setAttribute('fill-opacity', '0.85'); showTip(e, `<strong>${n.label}</strong><br>${fmt(n.val)}<br>${pct(n.val / d.totalRev)} of revenue`); });
+    rect.addEventListener('mouseenter', e => { rect.setAttribute('fill-opacity', '1.0'); showTip(e, `<strong>${n.label}</strong><br>${fmt(n.val)}<br>${pct(n.val / d.totalRev)} of revenue`); });
     rect.addEventListener('mousemove', e => { tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY - 10) + 'px'; });
-    rect.addEventListener('mouseleave', () => { rect.setAttribute('fill-opacity', '0.45'); hideTip(); });
+    rect.addEventListener('mouseleave', () => { rect.setAttribute('fill-opacity', '0.75'); hideTip(); });
     svg.appendChild(rect);
-
-    // Labels: left columns get labels on the left, right columns on the right
-    const isLeftCol = n.x <= colX[0];
-    const isRightCol = n.x >= colX[3];
-    const textX = isLeftCol ? n.x - 10 : n.x + (n.barW || nodeW) + 10;
-    const anchor = isLeftCol ? 'end' : 'start';
 
     // Contextual annotation: margin or % of revenue
     let annotation = '';
-    if (n.label === 'Gross Profit') annotation = `  ${pct(d.grossMargin)} margin`;
-    else if (n.label === 'EBITDA') annotation = `  ${pct(d.ebitdaMargin)} margin`;
-    else if (n.label !== 'Total Revenue') annotation = `  ${pct(Math.abs(n.val) / d.totalRev)} of rev`;
+    if (n.label === 'Gross Profit') annotation = pct(d.grossMargin) + ' margin';
+    else if (n.label === 'EBITDA') annotation = pct(d.ebitdaMargin) + ' margin';
+    else if (n.label !== 'Revenue') annotation = pct(Math.abs(n.val) / d.totalRev) + ' of rev';
 
-    if (n.h > 20) {
+    const isLeftCol = n.x <= colX[0];
+    const bw = n.barW || nodeW;
+    const barMidX = n.x + bw / 2;
+    const FF = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+    // For tall bars (> 50px): labels beside the bar (left cols: left side, others: right side)
+    // For short bars (<=50px): labels above or below the bar, centered on bar
+    if (n.h > 50) {
+      const textX = isLeftCol ? n.x - 10 : n.x + bw + 10;
+      const anchor = isLeftCol ? 'end' : 'start';
       const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       t1.setAttribute('x', textX); t1.setAttribute('y', n.y + n.h/2 - 8);
       t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#fff');
       t1.setAttribute('font-size', '12'); t1.setAttribute('font-weight', '600');
-      t1.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+      t1.setAttribute('font-family', FF);
       t1.textContent = n.label; svg.appendChild(t1);
       const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       t2.setAttribute('x', textX); t2.setAttribute('y', n.y + n.h/2 + 8);
       t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', n.color);
       t2.setAttribute('font-size', '13'); t2.setAttribute('font-weight', '700');
-      t2.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+      t2.setAttribute('font-family', FF);
       t2.textContent = fmt(n.val); svg.appendChild(t2);
-      // Annotation line (margin / % of rev)
-      if (annotation && n.h > 35) {
+      if (annotation) {
         const t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         t3.setAttribute('x', textX); t3.setAttribute('y', n.y + n.h/2 + 22);
         t3.setAttribute('text-anchor', anchor); t3.setAttribute('fill', '#888');
-        t3.setAttribute('font-size', '10');
-        t3.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
-        t3.textContent = annotation.trim(); svg.appendChild(t3);
+        t3.setAttribute('font-size', '10'); t3.setAttribute('font-family', FF);
+        t3.textContent = annotation; svg.appendChild(t3);
       }
     } else {
-      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t.setAttribute('x', textX); t.setAttribute('y', n.y + n.h/2 + 4);
-      t.setAttribute('text-anchor', anchor); t.setAttribute('fill', '#ccc');
-      t.setAttribute('font-size', '10');
-      t.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
-      t.textContent = n.label + ' ' + fmt(n.val); svg.appendChild(t);
+      // Short bar: label above bar, value below bar
+      const anchor = 'middle';
+      const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t1.setAttribute('x', barMidX); t1.setAttribute('y', n.y - 14);
+      t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#fff');
+      t1.setAttribute('font-size', '11'); t1.setAttribute('font-weight', '600');
+      t1.setAttribute('font-family', FF);
+      t1.textContent = n.label; svg.appendChild(t1);
+      const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t2.setAttribute('x', barMidX); t2.setAttribute('y', n.y - 2);
+      t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', n.color);
+      t2.setAttribute('font-size', '12'); t2.setAttribute('font-weight', '700');
+      t2.setAttribute('font-family', FF);
+      t2.textContent = fmt(n.val); svg.appendChild(t2);
+      if (annotation) {
+        const t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t3.setAttribute('x', barMidX); t3.setAttribute('y', n.y + n.h + 14);
+        t3.setAttribute('text-anchor', anchor); t3.setAttribute('fill', '#888');
+        t3.setAttribute('font-size', '10'); t3.setAttribute('font-family', FF);
+        t3.textContent = annotation; svg.appendChild(t3);
+      }
     }
   });
 
   // Column headers
-  [{ x: colX[0]+nodeW/2, label: 'REVENUE' }, { x: colX[1]+nodeW/2, label: 'TOTAL' },
+  [{ x: colX[0]+nodeW/2, label: 'REVENUE' }, { x: colX[1]+15, label: 'TOTAL' },
    { x: colX[2]+nodeW/2, label: 'MARGIN / COGS' }, { x: colX[3]+nodeW/2, label: 'EBITDA / OPEX' }].forEach(h => {
     const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     t.setAttribute('x', h.x); t.setAttribute('y', 30); t.setAttribute('text-anchor', 'middle');
