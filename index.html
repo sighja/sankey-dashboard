@@ -250,20 +250,22 @@ async function readRange(sheet, address) {
 
 // ââ Fetch all scenarios from snapshot blocks ââ
 async function fetchAllScenarios() {
-  const keys = Object.keys(ROW_OFFSET);
+  // All 4 scenario blocks live in rows 30–137 of the same sheet.
+  // One read instead of four eliminates 3 round-trips + potential recalcs.
+  const firstRow = 30;
+  const lastRow = 114 + N_ROWS - 1;
+  const address = `B${firstRow}:F${lastRow}`;
+  setStatus('loading', 'Reading all scenarios...');
+  const allValues = await readRange(SHEET, address);
 
-  // Read scenario blocks sequentially to avoid API timeouts
   for (const scenario of scenarios) {
-    const start = SNAPSHOT_STARTS[scenario];
-    const end = start + N_ROWS - 1;
-    const address = `B${start}:F${end}`;
-    setStatus('loading', `Reading ${scenario} scenario...`);
-    const values = await readRange(SHEET, address);
+    const blockStart = SNAPSHOT_STARTS[scenario] - firstRow;
     const scenarioData = {};
     for (let yi = 0; yi < years.length; yi++) {
       const yearData = {};
       for (const [key, offset] of Object.entries(ROW_OFFSET)) {
-        yearData[key] = values[offset] ? (values[offset][yi] || 0) : 0;
+        const row = blockStart + offset;
+        yearData[key] = allValues[row] ? (allValues[row][yi] || 0) : 0;
       }
       scenarioData[years[yi]] = yearData;
     }
@@ -329,8 +331,8 @@ function renderSankey(year) {
   };
 
   const availH = H - topPad - 20;
-  const scale = (availH * 0.78) / Math.max(d.totalRev, 1);
-  const flowGap = 6; // visual gap between ribbon flows
+  const scale = (availH * 0.55) / Math.max(d.totalRev, 1);
+  const flowGap = 8; // visual gap between ribbon flows
 
   // Helper: distribute nodes across full available height
   function layoutNodes(items, colIdx, useAbs) {
