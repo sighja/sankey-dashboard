@@ -399,21 +399,21 @@ function renderSankey(year) {
     // Carry source color through to the right — don't blend to neutral
     const gid = makeGradient(n.color, n.color);
     allFlows.push({ path: flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th, nodeW, totalRevNode.barW), gradId: gid, color: n.color, from: n.label, to: 'Revenue', val: n.val });
-    off1 += th + flowGap;
+    off1 += th;
   });
   let off2 = totalRevY;
   col2Nodes.forEach((n, i) => {
     const sh = n.val * scale;
     const gid = makeGradient(n.color, n.color);
     allFlows.push({ path: flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h, totalRevNode.barW, nodeW), gradId: gid, color: n.color, from: 'Revenue', to: n.label, val: n.val });
-    off2 += sh + flowGap;
+    off2 += sh;
   });
   let off3 = col2Nodes[0].y;
   col3Nodes.forEach((n, i) => {
     const sh = Math.abs(n.val) * scale;
     const gid = makeGradient(col2Nodes[0].color, n.color);
     allFlows.push({ path: flowPath(col2Nodes[0].x, off3, sh, n.x, n.y, n.h), gradId: gid, color: n.color, from: 'Gross Profit', to: n.label, val: n.val });
-    off3 += sh + flowGap;
+    off3 += sh;
   });
 
   // Render flows
