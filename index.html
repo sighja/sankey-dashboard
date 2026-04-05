@@ -574,7 +574,8 @@ if (params.get('year') && years.includes(params.get('year'))) {
   try {
     setStatus('loading', 'Authenticating with Microsoft Graph API...');
     await initAuth();
-    // Skip session creation — we only read paste-as-values snapshots, no recalc needed
+    setStatus('loading', 'Opening workbook session...');
+    await createWorkbookSession();
     setStatus('loading', 'Fetching scenario data from Grinn model...');
     await fetchAllScenarios();
     const now = new Date().toLocaleTimeString();
