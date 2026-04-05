@@ -117,7 +117,7 @@
 <div class="tooltip" id="tooltip"></div>
 
 <script>
-// ââ MCP Server config (Graph API via grinn-mcp) ââ
+// Ã¢ÂÂÃ¢ÂÂ MCP Server config (Graph API via grinn-mcp) Ã¢ÂÂÃ¢ÂÂ
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const DRIVE_ITEM_PATH = 'Grinn/Grinn_v17_r41.xlsm';
 const WORKBOOK_URL = `${GRAPH_BASE}/me/drive/root:/${DRIVE_ITEM_PATH}:/workbook`;
@@ -151,7 +151,7 @@ let activeYear = '2026';
 let msalInstance = null;
 let accessToken = null;
 
-// ââ MSAL Auth ââ
+// Ã¢ÂÂÃ¢ÂÂ MSAL Auth Ã¢ÂÂÃ¢ÂÂ
 async function initAuth() {
   // Dynamically load MSAL.js
   if (!window.msal) {
@@ -206,7 +206,7 @@ async function initAuth() {
   }
 }
 
-// ââ Graph API calls ââ
+// Ã¢ÂÂÃ¢ÂÂ Graph API calls Ã¢ÂÂÃ¢ÂÂ
 let sessionId = null;
 
 async function createWorkbookSession() {
@@ -248,7 +248,7 @@ async function readRange(sheet, address) {
   return data.values || [];
 }
 
-// ââ Fetch all scenarios from snapshot blocks ââ
+// Ã¢ÂÂÃ¢ÂÂ Fetch all scenarios from snapshot blocks Ã¢ÂÂÃ¢ÂÂ
 async function fetchAllScenarios() {
   const keys = Object.keys(ROW_OFFSET);
 
@@ -271,7 +271,7 @@ async function fetchAllScenarios() {
   }
 }
 
-// ââ Formatting ââ
+// Ã¢ÂÂÃ¢ÂÂ Formatting Ã¢ÂÂÃ¢ÂÂ
 function fmt(v) {
   if (Math.abs(v) >= 1e6) return '\u20AC' + (v / 1e6).toFixed(1) + 'M';
   if (Math.abs(v) >= 1e3) return '\u20AC' + (v / 1e3).toFixed(0) + 'k';
@@ -279,7 +279,7 @@ function fmt(v) {
 }
 function pct(v) { return (v * 100).toFixed(1) + '%'; }
 
-// ââ Tooltip ââ
+// Ã¢ÂÂÃ¢ÂÂ Tooltip Ã¢ÂÂÃ¢ÂÂ
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html) {
   tooltip.innerHTML = html;
@@ -289,190 +289,184 @@ function showTip(e, html) {
 }
 function hideTip() { tooltip.classList.remove('visible'); }
 
-// ââ Render ââ
+// Ã¢ÂÂÃ¢ÂÂ Render Ã¢ÂÂÃ¢ÂÂ
 function renderSankey(year) {
   activeYear = year;
   const d = allData[activeScenario] && allData[activeScenario][year];
   if (!d) return;
-
   const svg = document.getElementById('sankey');
   svg.innerHTML = '';
-
   document.getElementById('yearLabel').textContent = year + ' \u2014 ' + activeScenario + ' Scenario';
 
   const W = 900, H = 560;
-  const colX = [40, 280, 500, 740];
-  const nodeW = 22;
+  const colX = [40, 280, 520, 760];
+  const nodeW = 28;
   const topPad = 50;
-  const scale = (H - 80) / d.totalRev;
+
+  // Defs for gradients
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  svg.appendChild(defs);
+  let gradId = 0;
+  function makeGradient(c1, c2) {
+    const id = 'grad' + (gradId++);
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+    g.setAttribute('id', id);
+    g.setAttribute('gradientUnits', 'userSpaceOnUse');
+    const s1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+    s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', c1); s1.setAttribute('stop-opacity', '0.6');
+    const s2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+    s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', c2); s2.setAttribute('stop-opacity', '0.6');
+    g.appendChild(s1); g.appendChild(s2); defs.appendChild(g);
+    return id;
+  }
+
+  // Color palette - green for revenue/profit, red/warm for costs
+  const COL = {
+    bespokeRev: '#22c55e', modulesRev: '#10b981', boardsRev: '#34d399',
+    totalRev: '#16a34a', grossProfit: '#22c55e',
+    bespokeCOGS: '#ef4444', modulesCOGS: '#f97316', boardsCOGS: '#f59e0b',
+    ebitda: '#22c55e', sm: '#f472b6', rd: '#a855f7', ga: '#f97316'
+  };
+
+  const scale = (H - 100) / Math.max(d.totalRev, 1);
 
   // Col 0: Revenue sources
   const revSources = [
-    { label: 'Bespoke', val: d.bespokeRev, color: '#60a5fa' },
-    { label: 'Modules', val: d.modulesRev, color: '#818cf8' },
-    { label: 'Boards', val: d.boardsRev, color: '#a78bfa' },
+    { label: 'Bespoke', val: d.bespokeRev, color: COL.bespokeRev },
+    { label: 'Modules', val: d.modulesRev, color: COL.modulesRev },
+    { label: 'Boards', val: d.boardsRev, color: COL.boardsRev },
   ];
   let y0 = topPad;
   const revNodes = revSources.map(s => {
-    const h = s.val * scale;
+    const h = Math.max(s.val * scale, 4);
     const node = { ...s, x: colX[0], y: y0, h };
-    y0 += h + 12;
+    y0 += h + 16;
     return node;
   });
 
   const totalRevH = d.totalRev * scale;
-  const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: '#3b82f6', x: colX[1], y: topPad, h: totalRevH };
+  const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: COL.totalRev, x: colX[1], y: topPad, h: totalRevH };
 
-  // Col 2
+  // Col 2: Gross Profit + COGS
   const col2Items = [
-    { label: 'Gross Profit', val: d.grossProfit, color: '#4ade80' },
-    { label: 'Bespoke COGS', val: d.bespokeCOGS, color: '#f87171' },
-    { label: 'Modules COGS', val: d.modulesCOGS, color: '#fb923c' },
-    { label: 'Boards COGS', val: d.boardsCOGS, color: '#fbbf24' },
+    { label: 'Gross Profit', val: d.grossProfit, color: COL.grossProfit },
+    { label: 'Bespoke COGS', val: d.bespokeCOGS, color: COL.bespokeCOGS },
+    { label: 'Modules COGS', val: d.modulesCOGS, color: COL.modulesCOGS },
+    { label: 'Boards COGS', val: d.boardsCOGS, color: COL.boardsCOGS },
   ];
   let y2 = topPad;
   const col2Nodes = col2Items.map(s => {
-    const h = s.val * scale;
+    const h = Math.max(s.val * scale, 4);
     const node = { ...s, x: colX[2], y: y2, h };
-    y2 += h + 8;
+    y2 += h + 10;
     return node;
   });
 
-  // Col 3
+  // Col 3: EBITDA + OpEx
   const col3Items = [
-    { label: 'EBITDA', val: d.ebitda, color: '#22d3ee' },
-    { label: 'S&M', val: d.sm, color: '#f472b6' },
-    { label: 'R&D', val: d.rd, color: '#e879f9' },
-    { label: 'G&A', val: d.ga, color: '#c084fc' },
+    { label: 'EBITDA', val: d.ebitda, color: COL.ebitda },
+    { label: 'S&M', val: d.sm, color: COL.sm },
+    { label: 'R&D', val: d.rd, color: COL.rd },
+    { label: 'G&A', val: d.ga, color: COL.ga },
   ];
   let y3 = topPad;
   const col3Nodes = col3Items.map(s => {
-    const h = s.val * scale;
+    const h = Math.max(Math.abs(s.val) * scale, 4);
     const node = { ...s, x: colX[3], y: y3, h };
-    y3 += h + 8;
+    y3 += h + 10;
     return node;
   });
 
+  // Curved flow path with organic bezier curves
   function flowPath(sx, sy, sh, tx, ty, th) {
-    const sR = sx + nodeW, tL = tx, mx = (sR + tL) / 2;
-    return `M ${sR} ${sy} C ${mx} ${sy}, ${mx} ${ty}, ${tL} ${ty} L ${tL} ${ty+th} C ${mx} ${ty+th}, ${mx} ${sy+sh}, ${sR} ${sy+sh} Z`;
+    const sR = sx + nodeW, tL = tx;
+    const cx1 = sR + (tL - sR) * 0.4;
+    const cx2 = sR + (tL - sR) * 0.6;
+    return `M ${sR} ${sy} C ${cx1} ${sy}, ${cx2} ${ty}, ${tL} ${ty} L ${tL} ${ty+th} C ${cx2} ${ty+th}, ${cx1} ${sy+sh}, ${sR} ${sy+sh} Z`;
   }
 
-  // Flows
+  // Build all flows
+  const allFlows = [];
   let off1 = topPad;
-  const flows1 = revNodes.map(n => {
+  revNodes.forEach(n => {
     const th = n.val * scale;
-    const p = flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th);
+    const gid = makeGradient(n.color, totalRevNode.color);
+    allFlows.push({ path: flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th), gradId: gid, color: n.color, from: n.label, to: 'Total Revenue', val: n.val });
     off1 += th;
-    return { path: p, color: n.color, from: n.label, to: 'Total Revenue', val: n.val };
   });
-
   let off2 = topPad;
-  const flows2 = col2Nodes.map(n => {
+  col2Nodes.forEach(n => {
     const sh = n.val * scale;
-    const p = flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h);
+    const gid = makeGradient(totalRevNode.color, n.color);
+    allFlows.push({ path: flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h), gradId: gid, color: n.color, from: 'Total Revenue', to: n.label, val: n.val });
     off2 += sh;
-    return { path: p, color: n.color, from: 'Total Revenue', to: n.label, val: n.val };
   });
-
   let off3 = col2Nodes[0].y;
-  const flows3 = col3Nodes.map(n => {
-    const sh = n.val * scale;
-    const p = flowPath(col2Nodes[0].x, off3, sh, n.x, n.y, n.h);
+  col3Nodes.forEach(n => {
+    const sh = Math.abs(n.val) * scale;
+    const gid = makeGradient(col2Nodes[0].color, n.color);
+    allFlows.push({ path: flowPath(col2Nodes[0].x, off3, sh, n.x, n.y, n.h), gradId: gid, color: n.color, from: 'Gross Profit', to: n.label, val: n.val });
     off3 += sh;
-    return { path: p, color: n.color, from: 'Gross Profit', to: n.label, val: n.val };
   });
 
-  [...flows1, ...flows2, ...flows3].forEach(f => {
+  // Render flows
+  allFlows.forEach(f => {
     const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     el.setAttribute('d', f.path);
-    el.setAttribute('fill', f.color);
-    el.setAttribute('fill-opacity', '0.22');
+    el.setAttribute('fill', `url(#${f.gradId})`);
     el.setAttribute('stroke', f.color);
-    el.setAttribute('stroke-opacity', '0.3');
+    el.setAttribute('stroke-opacity', '0.12');
     el.setAttribute('stroke-width', '0.5');
     el.style.cursor = 'pointer';
-    el.style.transition = 'fill-opacity 0.15s';
-    el.addEventListener('mouseenter', e => {
-      el.setAttribute('fill-opacity', '0.45');
-      showTip(e, `<strong>${f.from} \u2192 ${f.to}</strong><br>${fmt(f.val)} (${pct(f.val / d.totalRev)} of rev)`);
-    });
-    el.addEventListener('mousemove', e => {
-      tooltip.style.left = (e.clientX + 14) + 'px';
-      tooltip.style.top = (e.clientY - 10) + 'px';
-    });
-    el.addEventListener('mouseleave', () => {
-      el.setAttribute('fill-opacity', '0.22');
-      hideTip();
-    });
+    el.style.transition = 'opacity 0.15s';
+    el.addEventListener('mouseenter', e => { el.style.opacity = '0.75'; showTip(e, `<strong>${f.from} \u2192 ${f.to}</strong><br>${fmt(f.val)} (${pct(f.val / d.totalRev)} of rev)`); });
+    el.addEventListener('mousemove', e => { tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY - 10) + 'px'; });
+    el.addEventListener('mouseleave', () => { el.style.opacity = '1'; hideTip(); });
     svg.appendChild(el);
   });
 
-  // Nodes
-  [...revNodes, totalRevNode, ...col2Nodes, ...col3Nodes].forEach(n => {
+  // Render nodes
+  const allN = [...revNodes, totalRevNode, ...col2Nodes, ...col3Nodes];
+  allN.forEach(n => {
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', n.x);
-    rect.setAttribute('y', n.y);
-    rect.setAttribute('width', nodeW);
-    rect.setAttribute('height', Math.max(n.h, 3));
-    rect.setAttribute('rx', 3);
-    rect.setAttribute('fill', n.color);
-    rect.setAttribute('fill-opacity', '0.9');
+    rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
+    rect.setAttribute('width', nodeW); rect.setAttribute('height', Math.max(n.h, 4));
+    rect.setAttribute('rx', 4); rect.setAttribute('fill', n.color);
     rect.style.cursor = 'pointer';
-    rect.addEventListener('mouseenter', e => {
-      rect.setAttribute('fill-opacity', '1');
-      showTip(e, `<strong>${n.label}</strong><br>${fmt(n.val)}<br>${pct(n.val / d.totalRev)} of revenue`);
-    });
-    rect.addEventListener('mousemove', e => {
-      tooltip.style.left = (e.clientX + 14) + 'px';
-      tooltip.style.top = (e.clientY - 10) + 'px';
-    });
-    rect.addEventListener('mouseleave', () => {
-      rect.setAttribute('fill-opacity', '0.9');
-      hideTip();
-    });
+    rect.addEventListener('mouseenter', e => { rect.setAttribute('fill-opacity', '0.8'); showTip(e, `<strong>${n.label}</strong><br>${fmt(n.val)}<br>${pct(n.val / d.totalRev)} of revenue`); });
+    rect.addEventListener('mousemove', e => { tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY - 10) + 'px'; });
+    rect.addEventListener('mouseleave', () => { rect.setAttribute('fill-opacity', '1'); hideTip(); });
     svg.appendChild(rect);
 
-    const textX = n.x === colX[0] ? n.x - 10 : n.x + nodeW + 10;
-    const anchor = n.x === colX[0] ? 'end' : 'start';
-
-    if (n.h > 14) {
+    const textX = n.x <= colX[0] ? n.x - 10 : n.x + nodeW + 10;
+    const anchor = n.x <= colX[0] ? 'end' : 'start';
+    if (n.h > 20) {
       const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t1.setAttribute('x', textX); t1.setAttribute('y', n.y + n.h/2 - 7);
-      t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#ccc');
-      t1.setAttribute('font-size', '12'); t1.setAttribute('font-weight', '500');
-      t1.textContent = n.label;
-      svg.appendChild(t1);
-
+      t1.setAttribute('x', textX); t1.setAttribute('y', n.y + n.h/2 - 8);
+      t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#fff');
+      t1.setAttribute('font-size', '13'); t1.setAttribute('font-weight', '600');
+      t1.textContent = n.label; svg.appendChild(t1);
       const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       t2.setAttribute('x', textX); t2.setAttribute('y', n.y + n.h/2 + 8);
-      t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', '#888');
-      t2.setAttribute('font-size', '11');
-      t2.textContent = fmt(n.val);
-      svg.appendChild(t2);
+      t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', n.color);
+      t2.setAttribute('font-size', '14'); t2.setAttribute('font-weight', '700');
+      t2.textContent = fmt(n.val); svg.appendChild(t2);
     } else {
       const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       t.setAttribute('x', textX); t.setAttribute('y', n.y + n.h/2 + 4);
-      t.setAttribute('text-anchor', anchor); t.setAttribute('fill', '#aaa');
+      t.setAttribute('text-anchor', anchor); t.setAttribute('fill', '#ccc');
       t.setAttribute('font-size', '11');
-      t.textContent = n.label + ' ' + fmt(n.val);
-      svg.appendChild(t);
+      t.textContent = n.label + ' ' + fmt(n.val); svg.appendChild(t);
     }
   });
 
   // Column headers
-  [
-    { x: colX[0] + nodeW/2, label: 'REVENUE SOURCES' },
-    { x: colX[1] + nodeW/2, label: 'TOTAL' },
-    { x: colX[2] + nodeW/2, label: 'MARGIN / COGS' },
-    { x: colX[3] + nodeW/2, label: 'EBITDA / OPEX' },
-  ].forEach(h => {
+  [{ x: colX[0]+nodeW/2, label: 'REVENUE SOURCES' }, { x: colX[1]+nodeW/2, label: 'TOTAL' },
+   { x: colX[2]+nodeW/2, label: 'MARGIN / COGS' }, { x: colX[3]+nodeW/2, label: 'EBITDA / OPEX' }].forEach(h => {
     const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    t.setAttribute('x', h.x); t.setAttribute('y', 28);
-    t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', '#555');
-    t.setAttribute('font-size', '10'); t.setAttribute('letter-spacing', '1');
-    t.textContent = h.label;
-    svg.appendChild(t);
+    t.setAttribute('x', h.x); t.setAttribute('y', 28); t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('fill', '#555'); t.setAttribute('font-size', '10'); t.setAttribute('letter-spacing', '1');
+    t.textContent = h.label; svg.appendChild(t);
   });
 
   // KPIs
@@ -504,7 +498,6 @@ function renderSankey(year) {
   `;
 }
 
-// ââ Init ââ
 function setStatus(state, msg) {
   const dot = document.getElementById('statusDot');
   const txt = document.getElementById('statusText');
