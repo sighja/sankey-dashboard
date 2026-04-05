@@ -356,7 +356,10 @@ function renderSankey(year) {
   const revNodes = layoutNodes(revSources, 0, false);
 
   const totalRevH = d.totalRev * scale;
-  const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: COL.totalRev, x: colX[1], y: topPad, h: totalRevH, invisible: true };
+  // Center the Total Revenue bar vertically (like the Sea Q4 reference)
+  const totalFlowH = totalRevH + (revSources.length - 1) * flowGap;
+  const totalRevY = topPad + (availH - totalFlowH) / 2;
+  const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: '#1e3a5f', x: colX[1], y: totalRevY, h: totalRevH };
 
   // Col 2: Gross Profit + COGS
   const col2Items = [
@@ -385,7 +388,7 @@ function renderSankey(year) {
 
   // Build all flows with gaps between ribbons for visual separation
   const allFlows = [];
-  let off1 = topPad;
+  let off1 = totalRevY;
   revNodes.forEach((n, i) => {
     const th = n.val * scale;
     // Carry source color through to the right — don't blend to neutral
@@ -393,7 +396,7 @@ function renderSankey(year) {
     allFlows.push({ path: flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th), gradId: gid, color: n.color, from: n.label, to: 'Total Revenue', val: n.val });
     off1 += th + flowGap;
   });
-  let off2 = topPad;
+  let off2 = totalRevY;
   col2Nodes.forEach((n, i) => {
     const sh = n.val * scale;
     const gid = makeGradient(n.color, n.color);
@@ -571,8 +574,7 @@ if (params.get('year') && years.includes(params.get('year'))) {
   try {
     setStatus('loading', 'Authenticating with Microsoft Graph API...');
     await initAuth();
-    setStatus('loading', 'Opening workbook session...');
-    await createWorkbookSession();
+    // Skip session creation — we only read paste-as-values snapshots, no recalc needed
     setStatus('loading', 'Fetching scenario data from Grinn model...');
     await fetchAllScenarios();
     const now = new Date().toLocaleTimeString();
