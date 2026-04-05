@@ -329,8 +329,8 @@ function renderSankey(year) {
   };
 
   const availH = H - topPad - 20;
-  const scale = (availH * 0.85) / Math.max(d.totalRev, 1);
-  const flowGap = 4; // visual gap between ribbon flows
+  const scale = (availH * 0.78) / Math.max(d.totalRev, 1);
+  const flowGap = 6; // visual gap between ribbon flows
 
   // Helper: distribute nodes across full available height
   function layoutNodes(items, colIdx, useAbs) {
@@ -354,7 +354,7 @@ function renderSankey(year) {
   const revNodes = layoutNodes(revSources, 0, false);
 
   const totalRevH = d.totalRev * scale;
-  const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: COL.totalRev, x: colX[1], y: topPad, h: totalRevH };
+  const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: COL.totalRev, x: colX[1], y: topPad, h: totalRevH, invisible: true };
 
   // Col 2: Gross Profit + COGS
   const col2Items = [
@@ -386,14 +386,15 @@ function renderSankey(year) {
   let off1 = topPad;
   revNodes.forEach((n, i) => {
     const th = n.val * scale;
-    const gid = makeGradient(n.color, totalRevNode.color);
+    // Carry source color through to the right — don't blend to neutral
+    const gid = makeGradient(n.color, n.color);
     allFlows.push({ path: flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th), gradId: gid, color: n.color, from: n.label, to: 'Total Revenue', val: n.val });
     off1 += th + flowGap;
   });
   let off2 = topPad;
   col2Nodes.forEach((n, i) => {
     const sh = n.val * scale;
-    const gid = makeGradient(totalRevNode.color, n.color);
+    const gid = makeGradient(n.color, n.color);
     allFlows.push({ path: flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h), gradId: gid, color: n.color, from: 'Total Revenue', to: n.label, val: n.val });
     off2 += sh + flowGap;
   });
@@ -422,15 +423,17 @@ function renderSankey(year) {
   // Render nodes — thin, semi-transparent bars; flows are the primary visual
   const allN = [...revNodes, totalRevNode, ...col2Nodes, ...col3Nodes];
   allN.forEach(n => {
+    // Skip invisible nodes (Total Revenue is a pass-through)
+    if (n.invisible) return;
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
     rect.setAttribute('width', nodeW); rect.setAttribute('height', Math.max(n.h, 4));
     rect.setAttribute('rx', 2); rect.setAttribute('fill', n.color);
-    rect.setAttribute('fill-opacity', '0.5');
+    rect.setAttribute('fill-opacity', '0.45');
     rect.style.cursor = 'pointer';
-    rect.addEventListener('mouseenter', e => { rect.setAttribute('fill-opacity', '0.9'); showTip(e, `<strong>${n.label}</strong><br>${fmt(n.val)}<br>${pct(n.val / d.totalRev)} of revenue`); });
+    rect.addEventListener('mouseenter', e => { rect.setAttribute('fill-opacity', '0.85'); showTip(e, `<strong>${n.label}</strong><br>${fmt(n.val)}<br>${pct(n.val / d.totalRev)} of revenue`); });
     rect.addEventListener('mousemove', e => { tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY - 10) + 'px'; });
-    rect.addEventListener('mouseleave', () => { rect.setAttribute('fill-opacity', '0.5'); hideTip(); });
+    rect.addEventListener('mouseleave', () => { rect.setAttribute('fill-opacity', '0.45'); hideTip(); });
     svg.appendChild(rect);
 
     // Labels: left columns get labels on the left, right columns on the right
