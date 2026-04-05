@@ -329,7 +329,8 @@ function renderSankey(year) {
   };
 
   const availH = H - topPad - 20;
-  const scale = availH / Math.max(d.totalRev, 1);
+  const scale = (availH * 0.85) / Math.max(d.totalRev, 1);
+  const flowGap = 4; // visual gap between ribbon flows
 
   // Helper: distribute nodes across full available height
   function layoutNodes(items, colIdx, useAbs) {
@@ -380,28 +381,28 @@ function renderSankey(year) {
     return `M ${sR} ${sy} C ${mid} ${sy}, ${mid} ${ty}, ${tL} ${ty} L ${tL} ${ty+th} C ${mid} ${ty+th}, ${mid} ${sy+sh}, ${sR} ${sy+sh} Z`;
   }
 
-  // Build all flows
+  // Build all flows with gaps between ribbons for visual separation
   const allFlows = [];
   let off1 = topPad;
-  revNodes.forEach(n => {
+  revNodes.forEach((n, i) => {
     const th = n.val * scale;
     const gid = makeGradient(n.color, totalRevNode.color);
     allFlows.push({ path: flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th), gradId: gid, color: n.color, from: n.label, to: 'Total Revenue', val: n.val });
-    off1 += th;
+    off1 += th + flowGap;
   });
   let off2 = topPad;
-  col2Nodes.forEach(n => {
+  col2Nodes.forEach((n, i) => {
     const sh = n.val * scale;
     const gid = makeGradient(totalRevNode.color, n.color);
     allFlows.push({ path: flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h), gradId: gid, color: n.color, from: 'Total Revenue', to: n.label, val: n.val });
-    off2 += sh;
+    off2 += sh + flowGap;
   });
   let off3 = col2Nodes[0].y;
-  col3Nodes.forEach(n => {
+  col3Nodes.forEach((n, i) => {
     const sh = Math.abs(n.val) * scale;
     const gid = makeGradient(col2Nodes[0].color, n.color);
     allFlows.push({ path: flowPath(col2Nodes[0].x, off3, sh, n.x, n.y, n.h), gradId: gid, color: n.color, from: 'Gross Profit', to: n.label, val: n.val });
-    off3 += sh;
+    off3 += sh + flowGap;
   });
 
   // Render flows
