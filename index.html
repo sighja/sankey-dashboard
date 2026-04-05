@@ -356,10 +356,10 @@ function renderSankey(year) {
   const revNodes = layoutNodes(revSources, 0, false);
 
   const totalRevH = d.totalRev * scale;
-  // Center the Total Revenue bar vertically (like the Sea Q4 reference)
-  const totalFlowH = totalRevH + (revSources.length - 1) * flowGap;
-  const totalRevY = topPad + (availH - totalFlowH) / 2;
-  const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: '#1e3a5f', x: colX[1], y: totalRevY, h: totalRevH };
+  // Center the Total Revenue bar: its midpoint = chart's midpoint
+  const chartMidY = topPad + availH / 2;
+  const totalRevY = chartMidY - totalRevH / 2;
+  const totalRevNode = { label: 'Revenue', val: d.totalRev, color: '#1e3a5f', x: colX[1], y: totalRevY, h: totalRevH, barW: 18 };
 
   // Col 2: Gross Profit + COGS
   const col2Items = [
@@ -380,8 +380,8 @@ function renderSankey(year) {
   const col3Nodes = layoutNodes(col3Items, 3, true);
 
   // Curved flow path with smooth organic bezier ribbons
-  function flowPath(sx, sy, sh, tx, ty, th) {
-    const sR = sx + nodeW, tL = tx;
+  function flowPath(sx, sy, sh, tx, ty, th, sw, tw) {
+    const sR = sx + (sw || nodeW), tL = tx;
     const mid = (sR + tL) / 2;
     return `M ${sR} ${sy} C ${mid} ${sy}, ${mid} ${ty}, ${tL} ${ty} L ${tL} ${ty+th} C ${mid} ${ty+th}, ${mid} ${sy+sh}, ${sR} ${sy+sh} Z`;
   }
@@ -393,14 +393,14 @@ function renderSankey(year) {
     const th = n.val * scale;
     // Carry source color through to the right — don't blend to neutral
     const gid = makeGradient(n.color, n.color);
-    allFlows.push({ path: flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th), gradId: gid, color: n.color, from: n.label, to: 'Total Revenue', val: n.val });
+    allFlows.push({ path: flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th, nodeW, totalRevNode.barW), gradId: gid, color: n.color, from: n.label, to: 'Revenue', val: n.val });
     off1 += th + flowGap;
   });
   let off2 = totalRevY;
   col2Nodes.forEach((n, i) => {
     const sh = n.val * scale;
     const gid = makeGradient(n.color, n.color);
-    allFlows.push({ path: flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h), gradId: gid, color: n.color, from: 'Total Revenue', to: n.label, val: n.val });
+    allFlows.push({ path: flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h, totalRevNode.barW, nodeW), gradId: gid, color: n.color, from: 'Revenue', to: n.label, val: n.val });
     off2 += sh + flowGap;
   });
   let off3 = col2Nodes[0].y;
@@ -432,7 +432,7 @@ function renderSankey(year) {
     if (n.invisible) return;
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
-    rect.setAttribute('width', nodeW); rect.setAttribute('height', Math.max(n.h, 4));
+    rect.setAttribute('width', n.barW || nodeW); rect.setAttribute('height', Math.max(n.h, 4));
     rect.setAttribute('rx', 2); rect.setAttribute('fill', n.color);
     rect.setAttribute('fill-opacity', '0.45');
     rect.style.cursor = 'pointer';
@@ -444,7 +444,7 @@ function renderSankey(year) {
     // Labels: left columns get labels on the left, right columns on the right
     const isLeftCol = n.x <= colX[0];
     const isRightCol = n.x >= colX[3];
-    const textX = isLeftCol ? n.x - 10 : n.x + nodeW + 10;
+    const textX = isLeftCol ? n.x - 10 : n.x + (n.barW || nodeW) + 10;
     const anchor = isLeftCol ? 'end' : 'start';
 
     // Contextual annotation: margin or % of revenue
