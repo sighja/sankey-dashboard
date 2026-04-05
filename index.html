@@ -207,15 +207,39 @@ async function initAuth() {
 }
 
 // ââ Graph API calls ââ
-async function graphGet(url) {
-  const res = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${accessToken}` }
-  });
-  if (!res.ok) {
+let sessionId = null;
+
+async function createWorkbookSession() {
+  try {
+    const res = await fetch(`${WORKBOOK_URL}/createSession`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ persistChanges: false })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      sessionId = data.id;
+    }
+  } catch (e) { console.warn('Session creation failed:', e); }
+}
+
+async function graphGet(url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    const headers = { 'Authorization': `Bearer ${accessToken}` };
+    if (sessionId) headers['workbook-session-id'] = sessionId;
+    const res = await fetch(url, { headers });
+    if (res.ok) return res.json();
+    if (res.status === 504 && i < retries - 1) {
+      setStatus('loading', `Graph API timeout, retrying (${i+1}/${retries-1})...`);
+      await new Promise(r => setTimeout(r, 3000 * (i + 1)));
+      continue;
+    }
     const text = await res.text();
     throw new Error(`Graph API ${res.status}: ${text.substring(0, 200)}`);
   }
-  return res.json();
 }
 
 async function readRange(sheet, address) {
@@ -228,13 +252,13 @@ async function readRange(sheet, address) {
 async function fetchAllScenarios() {
   const keys = Object.keys(ROW_OFFSET);
 
-  // Read all 4 snapshot blocks in parallel
-  const reads = scenarios.map(async (scenario) => {
+  // Read scenario blocks sequentially to avoid API timeouts
+  for (const scenario of scenarios) {
     const start = SNAPSHOT_STARTS[scenario];
     const end = start + N_ROWS - 1;
     const address = `B${start}:F${end}`;
+    setStatus('loading', `Reading ${scenario} scenario...`);
     const values = await readRange(SHEET, address);
-
     const scenarioData = {};
     for (let yi = 0; yi < years.length; yi++) {
       const yearData = {};
@@ -243,12 +267,7 @@ async function fetchAllScenarios() {
       }
       scenarioData[years[yi]] = yearData;
     }
-    return { scenario, data: scenarioData };
-  });
-
-  const results = await Promise.all(reads);
-  for (const r of results) {
-    allData[r.scenario] = r.data;
+    allData[scenario] = scenarioData;
   }
 }
 
@@ -536,6 +555,8 @@ if (params.get('year') && years.includes(params.get('year'))) {
   try {
     setStatus('loading', 'Authenticating with Microsoft Graph API...');
     await initAuth();
+    setStatus('loading', 'Opening workbook session...');
+    await createWorkbookSession();
     setStatus('loading', 'Fetching scenario data from Grinn model...');
     await fetchAllScenarios();
     const now = new Date().toLocaleTimeString();
