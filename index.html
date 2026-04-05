@@ -328,7 +328,21 @@ function renderSankey(year) {
     ebitda: '#22c55e', sm: '#f472b6', rd: '#a855f7', ga: '#f97316'
   };
 
-  const scale = (H - 100) / Math.max(d.totalRev, 1);
+  const availH = H - topPad - 20;
+  const scale = availH / Math.max(d.totalRev, 1);
+
+  // Helper: distribute nodes across full available height
+  function layoutNodes(items, colIdx, useAbs) {
+    const totalH = items.reduce((s, it) => s + Math.max((useAbs ? Math.abs(it.val) : it.val) * scale, 8), 0);
+    const gap = items.length > 1 ? Math.max((availH - totalH) / (items.length - 1), 8) : 0;
+    let y = topPad;
+    return items.map(s => {
+      const h = Math.max((useAbs ? Math.abs(s.val) : s.val) * scale, 8);
+      const node = { ...s, x: colX[colIdx], y, h };
+      y += h + gap;
+      return node;
+    });
+  }
 
   // Col 0: Revenue sources
   const revSources = [
@@ -336,13 +350,7 @@ function renderSankey(year) {
     { label: 'Modules', val: d.modulesRev, color: COL.modulesRev },
     { label: 'Boards', val: d.boardsRev, color: COL.boardsRev },
   ];
-  let y0 = topPad;
-  const revNodes = revSources.map(s => {
-    const h = Math.max(s.val * scale, 4);
-    const node = { ...s, x: colX[0], y: y0, h };
-    y0 += h + 16;
-    return node;
-  });
+  const revNodes = layoutNodes(revSources, 0, false);
 
   const totalRevH = d.totalRev * scale;
   const totalRevNode = { label: 'Total Revenue', val: d.totalRev, color: COL.totalRev, x: colX[1], y: topPad, h: totalRevH };
@@ -354,13 +362,7 @@ function renderSankey(year) {
     { label: 'Modules COGS', val: d.modulesCOGS, color: COL.modulesCOGS },
     { label: 'Boards COGS', val: d.boardsCOGS, color: COL.boardsCOGS },
   ];
-  let y2 = topPad;
-  const col2Nodes = col2Items.map(s => {
-    const h = Math.max(s.val * scale, 4);
-    const node = { ...s, x: colX[2], y: y2, h };
-    y2 += h + 10;
-    return node;
-  });
+  const col2Nodes = layoutNodes(col2Items, 2, false);
 
   // Col 3: EBITDA + OpEx
   const col3Items = [
@@ -369,13 +371,7 @@ function renderSankey(year) {
     { label: 'R&D', val: d.rd, color: COL.rd },
     { label: 'G&A', val: d.ga, color: COL.ga },
   ];
-  let y3 = topPad;
-  const col3Nodes = col3Items.map(s => {
-    const h = Math.max(Math.abs(s.val) * scale, 4);
-    const node = { ...s, x: colX[3], y: y3, h };
-    y3 += h + 10;
-    return node;
-  });
+  const col3Nodes = layoutNodes(col3Items, 3, true);
 
   // Curved flow path with organic bezier curves
   function flowPath(sx, sy, sh, tx, ty, th) {
