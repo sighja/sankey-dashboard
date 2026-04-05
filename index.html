@@ -117,7 +117,7 @@
 <div class="tooltip" id="tooltip"></div>
 
 <script>
-// Ã¢ÂÂÃ¢ÂÂ MCP Server config (Graph API via grinn-mcp) Ã¢ÂÂÃ¢ÂÂ
+// ââ MCP Server config (Graph API via grinn-mcp) ââ
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const DRIVE_ITEM_PATH = 'Grinn/Grinn_v17_r41.xlsm';
 const WORKBOOK_URL = `${GRAPH_BASE}/me/drive/root:/${DRIVE_ITEM_PATH}:/workbook`;
@@ -151,7 +151,7 @@ let activeYear = '2026';
 let msalInstance = null;
 let accessToken = null;
 
-// Ã¢ÂÂÃ¢ÂÂ MSAL Auth Ã¢ÂÂÃ¢ÂÂ
+// ââ MSAL Auth ââ
 async function initAuth() {
   // Dynamically load MSAL.js
   if (!window.msal) {
@@ -206,7 +206,7 @@ async function initAuth() {
   }
 }
 
-// Ã¢ÂÂÃ¢ÂÂ Graph API calls Ã¢ÂÂÃ¢ÂÂ
+// ââ Graph API calls ââ
 let sessionId = null;
 
 async function createWorkbookSession() {
@@ -248,7 +248,7 @@ async function readRange(sheet, address) {
   return data.values || [];
 }
 
-// Ã¢ÂÂÃ¢ÂÂ Fetch all scenarios from snapshot blocks Ã¢ÂÂÃ¢ÂÂ
+// ââ Fetch all scenarios from snapshot blocks ââ
 async function fetchAllScenarios() {
   const keys = Object.keys(ROW_OFFSET);
 
@@ -271,7 +271,7 @@ async function fetchAllScenarios() {
   }
 }
 
-// Ã¢ÂÂÃ¢ÂÂ Formatting Ã¢ÂÂÃ¢ÂÂ
+// ââ Formatting ââ
 function fmt(v) {
   if (Math.abs(v) >= 1e6) return '\u20AC' + (v / 1e6).toFixed(1) + 'M';
   if (Math.abs(v) >= 1e3) return '\u20AC' + (v / 1e3).toFixed(0) + 'k';
@@ -279,7 +279,7 @@ function fmt(v) {
 }
 function pct(v) { return (v * 100).toFixed(1) + '%'; }
 
-// Ã¢ÂÂÃ¢ÂÂ Tooltip Ã¢ÂÂÃ¢ÂÂ
+// ââ Tooltip ââ
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html) {
   tooltip.innerHTML = html;
@@ -289,7 +289,7 @@ function showTip(e, html) {
 }
 function hideTip() { tooltip.classList.remove('visible'); }
 
-// Ã¢ÂÂÃ¢ÂÂ Render Ã¢ÂÂÃ¢ÂÂ
+// ââ Render ââ
 function renderSankey(year) {
   activeYear = year;
   const d = allData[activeScenario] && allData[activeScenario][year];
