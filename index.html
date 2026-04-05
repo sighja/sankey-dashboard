@@ -334,50 +334,55 @@ function renderSankey(year) {
   const scale = (availH * 0.55) / Math.max(d.totalRev, 1);
   const flowGap = 8; // visual gap between ribbon flows
 
-  // Helper: distribute nodes across full available height
-  function layoutNodes(items, colIdx, useAbs) {
-    const totalH = items.reduce((s, it) => s + Math.max((useAbs ? Math.abs(it.val) : it.val) * scale, 8), 0);
-    const gap = items.length > 1 ? Math.max((availH - totalH) / (items.length - 1), 8) : 0;
-    let y = topPad;
+  // Helper: stack nodes compactly, centered on a given Y midpoint
+  // Bars + gaps sum to the parent bar height — Sankey flow conservation
+  function stackNodes(items, colIdx, useAbs, centerY, totalParentH) {
+    const nodeGap = flowGap;
+    const nGaps = items.length - 1;
+    const totalBarH = items.reduce((s, it) => s + Math.max((useAbs ? Math.abs(it.val) : it.val) * scale, 8), 0);
+    const stackH = totalBarH + nGaps * nodeGap;
+    let y = centerY - stackH / 2;
     return items.map(s => {
       const h = Math.max((useAbs ? Math.abs(s.val) : s.val) * scale, 8);
       const node = { ...s, x: colX[colIdx], y, h };
-      y += h + gap;
+      y += h + nodeGap;
       return node;
     });
   }
 
-  // Col 0: Revenue sources
+  // Total Revenue bar — centered in chart
+  const totalRevH = d.totalRev * scale;
+  const chartMidY = topPad + availH / 2;
+  const totalRevY = chartMidY - totalRevH / 2;
+  const totalRevNode = { label: 'Revenue', val: d.totalRev, color: '#1e3a5f', x: colX[1], y: totalRevY, h: totalRevH, barW: 18 };
+
+  // Col 0: Revenue sources — stacked compactly, centered on Revenue bar
   const revSources = [
     { label: 'Bespoke', val: d.bespokeRev, color: COL.bespokeRev },
     { label: 'Modules', val: d.modulesRev, color: COL.modulesRev },
     { label: 'Boards', val: d.boardsRev, color: COL.boardsRev },
   ];
-  const revNodes = layoutNodes(revSources, 0, false);
+  const revNodes = stackNodes(revSources, 0, false, chartMidY, totalRevH);
 
-  const totalRevH = d.totalRev * scale;
-  // Center the Total Revenue bar: its midpoint = chart's midpoint
-  const chartMidY = topPad + availH / 2;
-  const totalRevY = chartMidY - totalRevH / 2;
-  const totalRevNode = { label: 'Revenue', val: d.totalRev, color: '#1e3a5f', x: colX[1], y: totalRevY, h: totalRevH, barW: 18 };
-
-  // Col 2: Gross Profit + COGS
+  // Col 2: Gross Profit + COGS — stacked, centered on Revenue bar
   const col2Items = [
     { label: 'Gross Profit', val: d.grossProfit, color: COL.grossProfit },
     { label: 'Bespoke COGS', val: d.bespokeCOGS, color: COL.bespokeCOGS },
     { label: 'Modules COGS', val: d.modulesCOGS, color: COL.modulesCOGS },
     { label: 'Boards COGS', val: d.boardsCOGS, color: COL.boardsCOGS },
   ];
-  const col2Nodes = layoutNodes(col2Items, 2, false);
+  const col2Nodes = stackNodes(col2Items, 2, false, chartMidY, totalRevH);
 
-  // Col 3: EBITDA + OpEx
+  // Col 3: EBITDA + OpEx — stacked, centered on Gross Profit midpoint
+  const gpNode = col2Nodes[0];
+  const gpMidY = gpNode.y + gpNode.h / 2;
   const col3Items = [
     { label: 'EBITDA', val: d.ebitda, color: COL.ebitda },
     { label: 'S&M', val: d.sm, color: COL.sm },
     { label: 'R&D', val: d.rd, color: COL.rd },
     { label: 'G&A', val: d.ga, color: COL.ga },
   ];
-  const col3Nodes = layoutNodes(col3Items, 3, true);
+  const col3Nodes = stackNodes(col3Items, 3, true, gpMidY, gpNode.h);
 
   // Curved flow path with smooth organic bezier ribbons
   function flowPath(sx, sy, sh, tx, ty, th, sw, tw) {
