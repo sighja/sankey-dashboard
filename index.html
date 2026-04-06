@@ -104,31 +104,33 @@
 
 <script>
 // ── Override Sankey node ordering ────────────────────────────────────
-// Highcharts' crossing-minimization places Bespoke COGS at the top.
-// We override translate to reorder column 3 and recompute shapeArgs + links.
+// Reorder column 3 so COGS items are below Operating Profit/Expenses,
+// and recompute shapeArgs + links after reordering.
 (function(H) {
   const origTranslate = H.seriesTypes.sankey.prototype.translate;
   H.seriesTypes.sankey.prototype.translate = function() {
     origTranslate.apply(this, arguments);
+    // Reorder column 3: Op Profit on top, Op Expenses next, then COGS items at bottom
     const col3 = (this.nodes || []).filter(n => n.column === 3);
     if (col3.length === 0) return;
-    col3.sort((a, b) => a.nodeY - b.nodeY);
-    const bespokeIdx = col3.findIndex(n => n.name === 'Bespoke COGS');
-    if (bespokeIdx < 0) return;
-    const desiredIdx = col3.length - 3;
-    if (bespokeIdx >= desiredIdx) return;
-    const bespoke = col3.splice(bespokeIdx, 1)[0];
-    col3.splice(desiredIdx, 0, bespoke);
+
+    // Define desired order for column 3
+    const order = ['Operating Profit', 'Operating Expenses', 'Bespoke COGS', 'Modules COGS', 'Boards COGS'];
+    col3.sort((a, b) => {
+      const ai = order.indexOf(a.name);
+      const bi = order.indexOf(b.name);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
     const padding = this.nodePadding || 28;
     const factor = this.translationFactor;
     let y = 0;
     col3.forEach(n => {
       n.nodeY = y;
-      // Update shapeArgs so the visual rect moves too
       if (n.shapeArgs) n.shapeArgs.y = y;
       y += n.getSum() * factor + padding;
     });
-    // Retranslate all links touching moved nodes so paths follow
+    // Retranslate all links so paths follow moved nodes
     if (this.points) {
       this.points.forEach(p => {
         if (p.fromNode && p.toNode && typeof this.translateLink === 'function') {
@@ -140,11 +142,7 @@
 })(Highcharts);
 
 // ── Label-to-key mapping ─────────────────────────────────────────────
-// The data.json uses the actual Excel row labels as keys.
-// This map translates them to the internal field names the chart uses.
-// We'll discover the real labels at runtime and map flexibly.
 const LABEL_MAP = {
-  // Revenue
   'Bespoke':         'bespokeRev',
   'Bespoke Revenue': 'bespokeRev',
   'Modules':         'modulesRev',
@@ -153,18 +151,15 @@ const LABEL_MAP = {
   'Boards Revenue':  'boardsRev',
   'Total Revenue':   'totalRev',
   'Revenue':         'totalRev',
-  // COGS
   'Bespoke COGS': 'bespokeCOGS',
   'Modules COGS': 'modulesCOGS',
   'Boards COGS':  'boardsCOGS',
   'Total COGS':   'totalCOGS',
   'COGS':         'totalCOGS',
-  // Profit
   'Gross Profit':    'grossProfit',
   'Gross Margin':    'grossMargin',
   'Gross Margin %':  'grossMargin',
   'GM%':             'grossMargin',
-  // OpEx
   'S&M':         'sm',
   'Sales & Marketing': 'sm',
   'R&D':         'rd',
@@ -173,15 +168,12 @@ const LABEL_MAP = {
   'General & Administrative': 'ga',
   'Total OpEx':  'totalOpEx',
   'OpEx':        'totalOpEx',
-  // Bottom line
   'EBITDA':          'ebitda',
   'EBITDA Margin':   'ebitdaMargin',
   'EBITDA%':         'ebitdaMargin',
   'EBITDA %':        'ebitdaMargin',
-  // Cash & other
   'Free Cash Flow':  'fcf',
   'Closing Cash':    'closingCash',
-  // NRE (if present)
   'NRE':         'nreRev',
   'NRE Revenue': 'nreRev',
 };
@@ -189,17 +181,16 @@ const LABEL_MAP = {
 const scenarios = ['Bull', 'Base', 'Bear', 'Organic'];
 const years = ['2026', '2027', '2028', '2029', '2030'];
 let allData = {};
-let rawLabels = {};  // per-scenario labels from data.json
+let rawLabels = {};
 let activeScenario = 'Base';
 let activeYear = '2026';
 let chart = null;
 let dataTimestamp = null;
 
-// ── Load static data.json ────────────────────────────────────────────
 async function loadData() {
   setStatus('loading', 'Loading model data...');
   const res = await fetch('data.json?t=' + Date.now());
-  if (!res.ok) throw new Error(`Failed to load data.json: ${res.status}`);
+  if (!res.ok) throw new Error('Failed to load data.json: ' + res.status);
   const json = await res.json();
   dataTimestamp = json.updated;
 
@@ -212,14 +203,11 @@ async function loadData() {
     for (const year of years) {
       const yearRaw = block.data[year] || {};
       const yearData = {};
-
-      // Map every label we find to internal keys
       for (const [label, value] of Object.entries(yearRaw)) {
         const key = LABEL_MAP[label];
         if (key) {
           yearData[key] = typeof value === 'number' ? value : 0;
         }
-        // Also store raw label access for discovery
         yearData['_raw_' + label] = value;
       }
       scenarioData[year] = yearData;
@@ -228,7 +216,6 @@ async function loadData() {
   }
 }
 
-// ── Formatting ───────────────────────────────────────────────────────
 function fmt(v) {
   if (Math.abs(v) >= 1e6) return '\u20AC' + (v / 1e6).toFixed(1) + 'M';
   if (Math.abs(v) >= 1e3) return '\u20AC' + (v / 1e3).toFixed(0) + 'k';
@@ -236,7 +223,6 @@ function fmt(v) {
 }
 function pct(v) { return (v * 100).toFixed(1) + '%'; }
 
-// ── Render Sankey ────────────────────────────────────────────────────
 function renderSankey(year) {
   activeYear = year;
   const d = allData[activeScenario] && allData[activeScenario][year];
@@ -252,7 +238,6 @@ function renderSankey(year) {
     bespokeCogs: '#f87171', modulesCogs: '#fb923c', boardsCogs: '#fbbf24'
   };
 
-  // Build nodes and links dynamically based on available data
   const nodes = [];
   const links = [];
 
@@ -267,33 +252,40 @@ function renderSankey(year) {
   nodes.push({ id: 'Revenue', color: COL.revenue, column: 1 });
   for (const [name, val] of revSources) links.push([name, 'Revenue', val]);
 
-  // Column 2: GP + Hardware COGS
-  const hwCOGS = Math.abs(d.modulesCOGS || 0) + Math.abs(d.boardsCOGS || 0);
+  // Column 2: Gross Profit + Gross COGS
+  const totalCOGS = Math.abs(d.bespokeCOGS || 0) + Math.abs(d.modulesCOGS || 0) + Math.abs(d.boardsCOGS || 0);
   nodes.push({ id: 'Gross Profit', color: COL.gp, column: 2 });
-  if (hwCOGS > 0) nodes.push({ id: 'Hardware COGS', color: COL.cogs, column: 2 });
+  if (totalCOGS > 0) nodes.push({ id: 'Gross COGS', color: COL.cogs, column: 2 });
   links.push(['Revenue', 'Gross Profit', d.grossProfit || 0]);
-  if (hwCOGS > 0) links.push(['Revenue', 'Hardware COGS', hwCOGS]);
-  // Bespoke COGS: direct from Revenue to column 3
-  if (d.bespokeCOGS) links.push(['Revenue', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]);
+  if (totalCOGS > 0) links.push(['Revenue', 'Gross COGS', totalCOGS]);
 
-  // Column 3: GP breakdown (OpEx + EBITDA)
-  nodes.push({ id: 'EBITDA', color: COL.ebitda, column: 3 });
-  links.push(['Gross Profit', 'EBITDA', Math.abs(d.ebitda || 0)]);
+  // Column 3: Gross Profit -> Operating Profit + Operating Expenses
+  //           Gross COGS -> Bespoke COGS + Modules COGS + Boards COGS
+  const totalOpExVal = Math.abs(d.totalOpEx || 0);
+  const opProfit = Math.abs(d.ebitda || 0);
 
-  if (d.sm) { nodes.push({ id: 'S&M', color: COL.sm, column: 3 }); links.push(['Gross Profit', 'S&M', Math.abs(d.sm)]); }
-  if (d.rd) { nodes.push({ id: 'R&D', color: COL.rd, column: 3 }); links.push(['Gross Profit', 'R&D', Math.abs(d.rd)]); }
-  if (d.ga) { nodes.push({ id: 'G&A', color: COL.ga, column: 3 }); links.push(['Gross Profit', 'G&A', Math.abs(d.ga)]); }
+  nodes.push({ id: 'Operating Profit', color: COL.ebitda, column: 3 });
+  links.push(['Gross Profit', 'Operating Profit', opProfit]);
 
-  const otherOpEx = (d.totalOpEx || 0) - Math.abs(d.sm || 0) - Math.abs(d.rd || 0) - Math.abs(d.ga || 0);
-  if (otherOpEx > 0) {
-    nodes.push({ id: 'Other OpEx', color: '#94a3b8', column: 3 });
-    links.push(['Gross Profit', 'Other OpEx', otherOpEx]);
+  if (totalOpExVal > 0) {
+    nodes.push({ id: 'Operating Expenses', color: '#94a3b8', column: 3 });
+    links.push(['Gross Profit', 'Operating Expenses', totalOpExVal]);
   }
 
-  // Column 3: Bespoke COGS + Hardware COGS breakdown
-  if (d.bespokeCOGS) nodes.push({ id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 });
-  if (d.modulesCOGS) { nodes.push({ id: 'Modules COGS', color: COL.modulesCogs, column: 3 }); links.push(['Hardware COGS', 'Modules COGS', Math.abs(d.modulesCOGS)]); }
-  if (d.boardsCOGS)  { nodes.push({ id: 'Boards COGS', color: COL.boardsCogs, column: 3 }); links.push(['Hardware COGS', 'Boards COGS', Math.abs(d.boardsCOGS)]); }
+  if (d.bespokeCOGS) { nodes.push({ id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 }); links.push(['Gross COGS', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]); }
+  if (d.modulesCOGS) { nodes.push({ id: 'Modules COGS', color: COL.modulesCogs, column: 3 }); links.push(['Gross COGS', 'Modules COGS', Math.abs(d.modulesCOGS)]); }
+  if (d.boardsCOGS)  { nodes.push({ id: 'Boards COGS', color: COL.boardsCogs, column: 3 }); links.push(['Gross COGS', 'Boards COGS', Math.abs(d.boardsCOGS)]); }
+
+  // Column 4: Operating Expenses -> S&M, R&D, G&A, Other OpEx
+  if (d.sm) { nodes.push({ id: 'S&M', color: COL.sm, column: 4 }); links.push(['Operating Expenses', 'S&M', Math.abs(d.sm)]); }
+  if (d.rd) { nodes.push({ id: 'R&D', color: COL.rd, column: 4 }); links.push(['Operating Expenses', 'R&D', Math.abs(d.rd)]); }
+  if (d.ga) { nodes.push({ id: 'G&A', color: COL.ga, column: 4 }); links.push(['Operating Expenses', 'G&A', Math.abs(d.ga)]); }
+
+  const otherOpEx = Math.abs(d.totalOpEx || 0) - Math.abs(d.sm || 0) - Math.abs(d.rd || 0) - Math.abs(d.ga || 0);
+  if (otherOpEx > 0) {
+    nodes.push({ id: 'Other OpEx', color: '#94a3b8', column: 4 });
+    links.push(['Operating Expenses', 'Other OpEx', otherOpEx]);
+  }
 
   if (chart) chart.destroy();
 
@@ -334,7 +326,9 @@ function renderSankey(year) {
             const name = this.point.name || this.key;
             let extra = '';
             if (name === 'Gross Profit') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.grossMargin || 0) + ' margin</span>';
-            else if (name === 'EBITDA') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.ebitdaMargin || 0) + ' margin</span>';
+            else if (name === 'Operating Profit') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.ebitdaMargin || 0) + ' margin</span>';
+            else if (name === 'Gross COGS') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / (d.totalRev || 1)) + ' of rev</span>';
+            else if (name === 'Operating Expenses') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / (d.totalRev || 1)) + ' of rev</span>';
             else if (name !== 'Revenue') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / (d.totalRev || 1)) + ' of rev</span>';
             return '<span style="font-weight:600">' + name + '</span><br>' + fmt(this.point.sum) + extra;
           },
@@ -354,30 +348,29 @@ function renderSankey(year) {
     }]
   });
 
-  // KPIs
   document.getElementById('kpis').innerHTML = `
     <div class="kpi">
       <div class="kpi-label">Total Revenue</div>
-      <div class="kpi-value blue">${fmt(d.totalRev || 0)}</div>
+      <div class="kpi-value blue">\${fmt(d.totalRev || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Gross Profit</div>
-      <div class="kpi-value green">${fmt(d.grossProfit || 0)}</div>
-      <div class="kpi-sub">Margin: ${pct(d.grossMargin || 0)}</div>
+      <div class="kpi-value green">\${fmt(d.grossProfit || 0)}</div>
+      <div class="kpi-sub">Margin: \${pct(d.grossMargin || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Total OpEx</div>
-      <div class="kpi-value amber">${fmt(d.totalOpEx || 0)}</div>
-      <div class="kpi-sub">${pct((d.totalOpEx || 0) / (d.totalRev || 1))} of revenue</div>
+      <div class="kpi-value amber">\${fmt(d.totalOpEx || 0)}</div>
+      <div class="kpi-sub">\${pct((d.totalOpEx || 0) / (d.totalRev || 1))} of revenue</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">EBITDA</div>
-      <div class="kpi-value ${(d.ebitda || 0) >= 0 ? 'green' : 'red'}">${fmt(d.ebitda || 0)}</div>
-      <div class="kpi-sub">Margin: ${pct(d.ebitdaMargin || 0)}</div>
+      <div class="kpi-label">Operating Profit (EBITDA)</div>
+      <div class="kpi-value \${(d.ebitda || 0) >= 0 ? 'green' : 'red'}">\${fmt(d.ebitda || 0)}</div>
+      <div class="kpi-sub">Margin: \${pct(d.ebitdaMargin || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Revenue Mix</div>
-      <div class="kpi-value purple">${pct((d.modulesRev || 0) / (d.totalRev || 1))}</div>
+      <div class="kpi-value purple">\${pct((d.modulesRev || 0) / (d.totalRev || 1))}</div>
       <div class="kpi-sub">Modules share</div>
     </div>
   `;
@@ -388,7 +381,6 @@ function setStatus(state, msg) {
   document.getElementById('statusText').textContent = msg;
 }
 
-// ── Scenario tabs ────────────────────────────────────────────────────
 const scenarioTabsEl = document.getElementById('scenarioTabs');
 scenarios.forEach(s => {
   const tab = document.createElement('div');
@@ -404,7 +396,6 @@ scenarios.forEach(s => {
   scenarioTabsEl.appendChild(tab);
 });
 
-// ── Year tabs ────────────────────────────────────────────────────────
 const tabsEl = document.getElementById('yearTabs');
 years.forEach((y, i) => {
   const tab = document.createElement('div');
@@ -418,19 +409,16 @@ years.forEach((y, i) => {
   tabsEl.appendChild(tab);
 });
 
-// ── URL params ───────────────────────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
 if (params.get('scenario') && scenarios.includes(params.get('scenario'))) activeScenario = params.get('scenario');
 if (params.get('year') && years.includes(params.get('year'))) activeYear = params.get('year');
 
-// ── Boot ─────────────────────────────────────────────────────────────
 (async () => {
   try {
     await loadData();
     const ts = dataTimestamp ? new Date(dataTimestamp).toLocaleString() : 'unknown';
-    setStatus('live', `Data snapshot from ${ts}`);
+    setStatus('live', 'Data snapshot from ' + ts);
 
-    // Log discovered labels for debugging
     const labels = rawLabels[activeScenario] || [];
     console.log('Row labels in ' + activeScenario + ':', labels);
 
@@ -438,11 +426,10 @@ if (params.get('year') && years.includes(params.get('year'))) activeYear = param
     document.querySelectorAll('.year-tab').forEach(t => t.classList.toggle('active', t.textContent === activeYear));
     renderSankey(activeYear);
   } catch (err) {
-    setStatus('error', `Failed: ${err.message}`);
+    setStatus('error', 'Failed: ' + err.message);
     console.error(err);
   }
 })();
 </script>
 </body>
 </html>
-
