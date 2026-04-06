@@ -109,11 +109,14 @@
 // We'll discover the real labels at runtime and map flexibly.
 const LABEL_MAP = {
   // Revenue
-  'Bespoke':     'bespokeRev',
-  'Modules':     'modulesRev',
-  'Boards':      'boardsRev',
-  'Total Revenue': 'totalRev',
-  'Revenue':     'totalRev',
+  'Bespoke':         'bespokeRev',
+  'Bespoke Revenue': 'bespokeRev',
+  'Modules':         'modulesRev',
+  'Modules Revenue': 'modulesRev',
+  'Boards':          'boardsRev',
+  'Boards Revenue':  'boardsRev',
+  'Total Revenue':   'totalRev',
+  'Revenue':         'totalRev',
   // COGS
   'Bespoke COGS': 'bespokeCOGS',
   'Modules COGS': 'modulesCOGS',
@@ -121,9 +124,10 @@ const LABEL_MAP = {
   'Total COGS':   'totalCOGS',
   'COGS':         'totalCOGS',
   // Profit
-  'Gross Profit':  'grossProfit',
-  'Gross Margin':  'grossMargin',
-  'GM%':           'grossMargin',
+  'Gross Profit':    'grossProfit',
+  'Gross Margin':    'grossMargin',
+  'Gross Margin %':  'grossMargin',
+  'GM%':             'grossMargin',
   // OpEx
   'S&M':         'sm',
   'Sales & Marketing': 'sm',
@@ -134,9 +138,13 @@ const LABEL_MAP = {
   'Total OpEx':  'totalOpEx',
   'OpEx':        'totalOpEx',
   // Bottom line
-  'EBITDA':        'ebitda',
-  'EBITDA Margin': 'ebitdaMargin',
-  'EBITDA%':       'ebitdaMargin',
+  'EBITDA':          'ebitda',
+  'EBITDA Margin':   'ebitdaMargin',
+  'EBITDA%':         'ebitdaMargin',
+  'EBITDA %':        'ebitdaMargin',
+  // Cash & other
+  'Free Cash Flow':  'fcf',
+  'Closing Cash':    'closingCash',
   // NRE (if present)
   'NRE':         'nreRev',
   'NRE Revenue': 'nreRev',
