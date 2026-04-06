@@ -364,23 +364,29 @@ function renderSankey(year) {
   ];
   const revNodes = stackNodes(revSources, 0, false, chartMidY, totalRevH);
 
-  // Col 2: Gross Profit + Total COGS summary bar — stacked, centered on Revenue bar
-  const col2Items = [
-    { label: 'Gross Profit', val: d.grossProfit, color: COL.grossProfit },
-    { label: 'Cost of Sales', val: d.totalCOGS, color: COL.bespokeCOGS },
+  // Col 2: Gross Profit + Cost of Sales — tile perfectly within Revenue bar (no gaps)
+  const gpH = d.grossProfit * scale;
+  const cogsH = d.totalCOGS * scale;
+  const col2Nodes = [
+    { label: 'Gross Profit', val: d.grossProfit, color: COL.grossProfit, x: colX[2], y: totalRevY, h: gpH },
+    { label: 'Cost of Sales', val: d.totalCOGS, color: COL.bespokeCOGS, x: colX[2], y: totalRevY + gpH, h: cogsH },
   ];
-  const col2Nodes = stackNodes(col2Items, 2, false, chartMidY, totalRevH);
 
-  // Col 3: EBITDA + OpEx — stacked, centered on Gross Profit midpoint
+  // Col 3: EBITDA + OpEx — tile perfectly within Gross Profit bar (no gaps)
   const gpNode = col2Nodes[0];
-  const gpMidY = gpNode.y + gpNode.h / 2;
-  const col3Items = [
+  const col3Vals = [
     { label: 'EBITDA', val: d.ebitda, color: COL.ebitda },
     { label: 'S&M', val: d.sm, color: COL.sm },
     { label: 'R&D', val: d.rd, color: COL.rd },
     { label: 'G&A', val: d.ga, color: COL.ga },
   ];
-  const col3Nodes = stackNodes(col3Items, 3, true, gpMidY, gpNode.h);
+  let col3Y = gpNode.y;
+  const col3Nodes = col3Vals.map(item => {
+    const h = Math.abs(item.val) * scale;
+    const node = { ...item, x: colX[3], y: col3Y, h };
+    col3Y += h;
+    return node;
+  });
 
   // Curved flow path with smooth organic bezier ribbons
   function flowPath(sx, sy, sh, tx, ty, th, sw, tw) {
