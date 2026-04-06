@@ -111,7 +111,7 @@
 <div class="year-tabs" id="yearTabs"></div>
 <div class="chart-container">
   <div class="year-label" id="yearLabel"></div>
-  <svg id="sankey" viewBox="0 0 960 560" preserveAspectRatio="xMidYMid meet"></svg>
+  <svg id="sankey" viewBox="0 0 960 720" preserveAspectRatio="xMidYMid meet"></svg>
 </div>
 <div class="kpi-row" id="kpis"></div>
 <div class="tooltip" id="tooltip"></div>
@@ -300,7 +300,7 @@ function renderSankey(year) {
   svg.innerHTML = '';
   document.getElementById('yearLabel').textContent = year + ' \u2014 ' + activeScenario + ' Scenario';
 
-  const W = 960, H = 560;
+  const W = 960, H = 720;
   const colX = [120, 320, 540, 780];
   const nodeW = 24;
   const topPad = 50;
@@ -331,7 +331,7 @@ function renderSankey(year) {
   };
 
   const availH = H - topPad - 20;
-  const scale = (availH * 0.70) / Math.max(d.totalRev, 1);
+  const scale = (availH * 0.58) / Math.max(d.totalRev, 1);
   const flowGap = 16; // visual gap between ribbon flows
 
   // Helper: stack nodes compactly, centered on a given Y midpoint
@@ -454,55 +454,31 @@ function renderSankey(year) {
 
     const isLeftCol = n.x <= colX[0];
     const bw = n.barW || nodeW;
-    const barMidX = n.x + bw / 2;
     const FF = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
-    // For tall bars (> 50px): labels beside the bar (left cols: left side, others: right side)
-    // For short bars (<=50px): labels above or below the bar, centered on bar
-    if (n.h > 50) {
-      const textX = isLeftCol ? n.x - 10 : n.x + bw + 10;
-      const anchor = isLeftCol ? 'end' : 'start';
-      const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t1.setAttribute('x', textX); t1.setAttribute('y', n.y + n.h/2 - 8);
-      t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#fff');
-      t1.setAttribute('font-size', '12'); t1.setAttribute('font-weight', '600');
-      t1.setAttribute('font-family', FF);
-      t1.textContent = n.label; svg.appendChild(t1);
-      const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t2.setAttribute('x', textX); t2.setAttribute('y', n.y + n.h/2 + 8);
-      t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', n.color);
-      t2.setAttribute('font-size', '13'); t2.setAttribute('font-weight', '700');
-      t2.setAttribute('font-family', FF);
-      t2.textContent = fmt(n.val); svg.appendChild(t2);
-      if (annotation) {
-        const t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        t3.setAttribute('x', textX); t3.setAttribute('y', n.y + n.h/2 + 22);
-        t3.setAttribute('text-anchor', anchor); t3.setAttribute('fill', '#888');
-        t3.setAttribute('font-size', '10'); t3.setAttribute('font-family', FF);
-        t3.textContent = annotation; svg.appendChild(t3);
-      }
-    } else {
-      // Short bar: label above bar, value below bar
-      const anchor = 'middle';
-      const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t1.setAttribute('x', barMidX); t1.setAttribute('y', n.y - 14);
-      t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#fff');
-      t1.setAttribute('font-size', '11'); t1.setAttribute('font-weight', '600');
-      t1.setAttribute('font-family', FF);
-      t1.textContent = n.label; svg.appendChild(t1);
-      const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t2.setAttribute('x', barMidX); t2.setAttribute('y', n.y - 2);
-      t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', n.color);
-      t2.setAttribute('font-size', '12'); t2.setAttribute('font-weight', '700');
-      t2.setAttribute('font-family', FF);
-      t2.textContent = fmt(n.val); svg.appendChild(t2);
-      if (annotation) {
-        const t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        t3.setAttribute('x', barMidX); t3.setAttribute('y', n.y + n.h + 14);
-        t3.setAttribute('text-anchor', anchor); t3.setAttribute('fill', '#888');
-        t3.setAttribute('font-size', '10'); t3.setAttribute('font-family', FF);
-        t3.textContent = annotation; svg.appendChild(t3);
-      }
+    // All labels go beside the bar: left-side for col 0, right-side for others
+    const textX = isLeftCol ? n.x - 10 : n.x + bw + 10;
+    const anchor = isLeftCol ? 'end' : 'start';
+    const midY = n.y + n.h / 2;
+
+    const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t1.setAttribute('x', textX); t1.setAttribute('y', midY - 6);
+    t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#fff');
+    t1.setAttribute('font-size', '11'); t1.setAttribute('font-weight', '600');
+    t1.setAttribute('font-family', FF);
+    t1.textContent = n.label; svg.appendChild(t1);
+    const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t2.setAttribute('x', textX); t2.setAttribute('y', midY + 10);
+    t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', n.color);
+    t2.setAttribute('font-size', '12'); t2.setAttribute('font-weight', '700');
+    t2.setAttribute('font-family', FF);
+    t2.textContent = fmt(n.val); svg.appendChild(t2);
+    if (annotation && n.h > 20) {
+      const t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t3.setAttribute('x', textX); t3.setAttribute('y', midY + 22);
+      t3.setAttribute('text-anchor', anchor); t3.setAttribute('fill', '#888');
+      t3.setAttribute('font-size', '9'); t3.setAttribute('font-family', FF);
+      t3.textContent = annotation; svg.appendChild(t3);
     }
   });
 
