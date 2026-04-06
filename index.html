@@ -103,6 +103,33 @@
 <div class="kpi-row" id="kpis"></div>
 
 <script>
+// ── Override Sankey node ordering ────────────────────────────────────
+// Highcharts' crossing-minimization algorithm places Bespoke COGS at the
+// top because it links directly from Revenue across columns. We override
+// the translate method to reorder column 3 so Bespoke COGS is 3rd from bottom.
+(function(H) {
+  const origTranslate = H.seriesTypes.sankey.prototype.translate;
+  H.seriesTypes.sankey.prototype.translate = function() {
+    origTranslate.apply(this, arguments);
+    const col3 = (this.nodes || []).filter(n => n.column === 3);
+    if (col3.length === 0) return;
+    col3.sort((a, b) => a.nodeY - b.nodeY);
+    const bespokeIdx = col3.findIndex(n => n.name === 'Bespoke COGS');
+    if (bespokeIdx < 0) return;
+    const desiredIdx = col3.length - 3;
+    if (bespokeIdx >= desiredIdx) return;
+    const bespoke = col3.splice(bespokeIdx, 1)[0];
+    col3.splice(desiredIdx, 0, bespoke);
+    const padding = this.nodePadding || 28;
+    const factor = this.translationFactor;
+    let y = 0;
+    col3.forEach(n => {
+      n.nodeY = y;
+      y += n.getSum() * factor + padding;
+    });
+  };
+})(Highcharts);
+
 // ── Label-to-key mapping ─────────────────────────────────────────────
 // The data.json uses the actual Excel row labels as keys.
 // This map translates them to the internal field names the chart uses.
