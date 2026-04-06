@@ -43,18 +43,26 @@ def workbook_url():
     encoded = quote(DRIVE_PATH, safe="")
     return f"{GRAPH_BASE}/users/{USER_ID}/drive/root:/{DRIVE_PATH}:/workbook"
 
-def graph_get(url, token, session_id=None, retries=3):
+def graph_get(url, token, session_id=None, retries=5):
     for attempt in range(retries):
         headers = {"Authorization": f"Bearer {token}"}
         if session_id:
             headers["workbook-session-id"] = session_id
         req = Request(url, headers=headers)
         try:
-            return json.loads(urlopen(req).read())
+            return json.loads(urlopen(req, timeout=120).read())
         except HTTPError as e:
             if e.code == 504 and attempt < retries - 1:
-                print(f"  ⏳ 504 timeout, retry {attempt+1}/{retries-1}...")
-                time.sleep(3 * (attempt + 1))
+                wait = 5 * (attempt + 1)
+                print(f"  ⏳ 504 timeout, retry {attempt+1}/{retries-1} (waiting {wait}s)...")
+                time.sleep(wait)
+                continue
+            raise
+        except Exception as e:
+            if attempt < retries - 1:
+                wait = 5 * (attempt + 1)
+                print(f"  ⏳ Error: {e}, retry {attempt+1}/{retries-1} (waiting {wait}s)...")
+                time.sleep(wait)
                 continue
             raise
 
@@ -66,7 +74,7 @@ def create_session(token):
         "Content-Type": "application/json"
     })
     try:
-        resp = json.loads(urlopen(req).read())
+        resp = json.loads(urlopen(req, timeout=60).read())
         return resp.get("id")
     except Exception as e:
         print(f"  ⚠️ Session creation failed: {e}")
@@ -88,15 +96,7 @@ def main():
     session_id = create_session(token)
     print(f"  Session: {session_id[:20]}..." if session_id else "  No session (proceeding without)")
 
-    # Read labels (column A) + data (columns B-F) for all scenario blocks
-    first_row = 30
-    last_row = 114 + N_ROWS - 1  # 137
-    address = f"A{first_row}:F{last_row}"
-    print(f"📊 Reading {SHEET}!{address}...")
-    all_values = read_range(token, session_id, SHEET, address)
-    print(f"  Got {len(all_values)} rows")
-
-    # Parse each scenario
+    # Read each scenario block separately to avoid 504 timeouts on large ranges
     output = {
         "updated": datetime.now(timezone.utc).isoformat(),
         "sheet": SHEET,
@@ -105,17 +105,27 @@ def main():
     }
 
     for scenario in SCENARIOS:
-        block_start = SNAPSHOT_STARTS[scenario] - first_row
+        start_row = SNAPSHOT_STARTS[scenario]
+        end_row = start_row + N_ROWS - 1
+        address = f"A{start_row}:F{end_row}"
+        print(f"📊 Reading {SHEET}!{address} ({scenario})...")
+
+        try:
+            all_values = read_range(token, session_id, SHEET, address)
+            print(f"  Got {len(all_values)} rows")
+        except Exception as e:
+            print(f"  ❌ Failed to read {scenario}: {e}")
+            continue
+
         row_labels = []
         scenario_data = {}
 
         for yi, year in enumerate(YEARS):
             year_data = {}
             for offset in range(N_ROWS):
-                row_idx = block_start + offset
-                if row_idx >= len(all_values):
+                if offset >= len(all_values):
                     break
-                row = all_values[row_idx]
+                row = all_values[offset]
                 label = str(row[0] or "").strip() if row[0] else f"row_{offset}"
                 if yi == 0:
                     row_labels.append(label)
@@ -128,6 +138,13 @@ def main():
             "data": scenario_data
         }
         print(f"  ✅ {scenario}: {len(row_labels)} rows, labels: {row_labels[:5]}...")
+
+        # Small delay between scenario reads to be gentle on the API
+        time.sleep(2)
+
+    if not output["scenarios"]:
+        print("❌ No scenarios were read successfully!")
+        sys.exit(1)
 
     # Write output
     out_path = os.environ.get("OUTPUT_PATH", "data.json")
