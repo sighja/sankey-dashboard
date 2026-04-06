@@ -231,11 +231,18 @@ function renderSankey(year) {
   nodes.push({ id: 'Revenue', color: COL.revenue, column: 1 });
   for (const [name, val] of revSources) links.push([name, 'Revenue', val]);
 
-  // Column 2: GP + COGS
+  // Column 2: GP + Hardware COGS (Boards + Modules)
+  const hwCOGS = Math.abs(d.modulesCOGS || 0) + Math.abs(d.boardsCOGS || 0);
   nodes.push({ id: 'Gross Profit', color: COL.gp, column: 2 });
-  nodes.push({ id: 'COGS', color: COL.cogs, column: 2 });
+  if (hwCOGS > 0) nodes.push({ id: 'Hardware COGS', color: COL.cogs, column: 2 });
   links.push(['Revenue', 'Gross Profit', d.grossProfit || 0]);
-  links.push(['Revenue', 'COGS', d.totalCOGS || 0]);
+  if (hwCOGS > 0) links.push(['Revenue', 'Hardware COGS', hwCOGS]);
+
+  // Bespoke COGS: direct link from Revenue → column 3 (spans across)
+  if (d.bespokeCOGS) {
+    nodes.push({ id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 });
+    links.push(['Revenue', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]);
+  }
 
   // Column 3: GP breakdown (OpEx + EBITDA)
   nodes.push({ id: 'EBITDA', color: COL.ebitda, column: 3 });
@@ -251,10 +258,9 @@ function renderSankey(year) {
     links.push(['Gross Profit', 'Other OpEx', otherOpEx]);
   }
 
-  // Column 3: COGS breakdown
-  if (d.bespokeCOGS) { nodes.push({ id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 }); links.push(['COGS', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]); }
-  if (d.modulesCOGS) { nodes.push({ id: 'Modules COGS', color: COL.modulesCogs, column: 3 }); links.push(['COGS', 'Modules COGS', Math.abs(d.modulesCOGS)]); }
-  if (d.boardsCOGS)  { nodes.push({ id: 'Boards COGS', color: COL.boardsCogs, column: 3 }); links.push(['COGS', 'Boards COGS', Math.abs(d.boardsCOGS)]); }
+  // Column 3: Hardware COGS breakdown
+  if (d.modulesCOGS) { nodes.push({ id: 'Modules COGS', color: COL.modulesCogs, column: 3 }); links.push(['Hardware COGS', 'Modules COGS', Math.abs(d.modulesCOGS)]); }
+  if (d.boardsCOGS)  { nodes.push({ id: 'Boards COGS', color: COL.boardsCogs, column: 3 }); links.push(['Hardware COGS', 'Boards COGS', Math.abs(d.boardsCOGS)]); }
 
   if (chart) chart.destroy();
 
@@ -406,3 +412,4 @@ if (params.get('year') && years.includes(params.get('year'))) activeYear = param
 </script>
 </body>
 </html>
+
