@@ -104,9 +104,8 @@
 
 <script>
 // ── Override Sankey node ordering ────────────────────────────────────
-// Highcharts' crossing-minimization algorithm places Bespoke COGS at the
-// top because it links directly from Revenue across columns. We override
-// the translate method to reorder column 3 so Bespoke COGS is 3rd from bottom.
+// Highcharts' crossing-minimization places Bespoke COGS at the top.
+// We override translate to reorder column 3 and recompute shapeArgs + links.
 (function(H) {
   const origTranslate = H.seriesTypes.sankey.prototype.translate;
   H.seriesTypes.sankey.prototype.translate = function() {
@@ -125,8 +124,18 @@
     let y = 0;
     col3.forEach(n => {
       n.nodeY = y;
+      // Update shapeArgs so the visual rect moves too
+      if (n.shapeArgs) n.shapeArgs.y = y;
       y += n.getSum() * factor + padding;
     });
+    // Retranslate all links touching moved nodes so paths follow
+    if (this.points) {
+      this.points.forEach(p => {
+        if (p.fromNode && p.toNode && typeof this.translateLink === 'function') {
+          this.translateLink(p);
+        }
+      });
+    }
   };
 })(Highcharts);
 
