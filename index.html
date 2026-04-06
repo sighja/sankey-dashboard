@@ -273,10 +273,10 @@ function renderSankey(year) {
     },
     plotOptions: {
       sankey: {
-        nodeWidth: 24,
-        nodePadding: 18,
-        curveFactor: 0.5,
-        linkOpacity: 0.4,
+        nodeWidth: 14,
+        nodePadding: 30,
+        curveFactor: 0.6,
+        linkOpacity: 0.45,
         borderWidth: 0,
         colorByPoint: false,
         dataLabels: {
@@ -288,12 +288,14 @@ function renderSankey(year) {
             textOutline: 'none'
           },
           nodeFormatter: function() {
+            const name = this.point.name || this.key;
             let extra = '';
-            if (this.key === 'Gross Profit') extra = '\n' + pct(d.grossMargin) + ' margin';
-            else if (this.key === 'EBITDA') extra = '\n' + pct(d.ebitdaMargin) + ' margin';
-            else if (this.key !== 'Revenue') extra = '\n' + pct(Math.abs(this.point.sum) / d.totalRev) + ' of rev';
-            return this.key + '\n' + fmt(this.point.sum) + extra;
-          }
+            if (name === 'Gross Profit') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.grossMargin) + ' margin</span>';
+            else if (name === 'EBITDA') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.ebitdaMargin) + ' margin</span>';
+            else if (name !== 'Revenue') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / d.totalRev) + ' of rev</span>';
+            return '<span style="font-weight:600">' + name + '</span><br>' + fmt(this.point.sum) + extra;
+          },
+          useHTML: true
         },
         states: {
           hover: { linkOpacity: 0.7 },
@@ -315,18 +317,24 @@ function renderSankey(year) {
         { id: 'S&M', color: COL.sm, column: 3 },
         { id: 'R&D', color: COL.rd, column: 3 },
         { id: 'G&A', color: COL.ga, column: 3 },
+        { id: 'Other OpEx', color: '#94a3b8', column: 3 },
       ],
-      data: [
-        ['Bespoke', 'Revenue', d.bespokeRev],
-        ['Boards', 'Revenue', d.boardsRev],
-        ['Modules', 'Revenue', d.modulesRev],
-        ['Revenue', 'Gross Profit', d.grossProfit],
-        ['Revenue', 'Cost of Sales', d.totalCOGS],
-        ['Gross Profit', 'EBITDA', Math.abs(d.ebitda)],
-        ['Gross Profit', 'S&M', Math.abs(d.sm)],
-        ['Gross Profit', 'R&D', Math.abs(d.rd)],
-        ['Gross Profit', 'G&A', Math.abs(d.ga)],
-      ]
+      data: (function() {
+        const otherOpEx = d.totalOpEx - Math.abs(d.sm) - Math.abs(d.rd) - Math.abs(d.ga);
+        const links = [
+          ['Bespoke', 'Revenue', d.bespokeRev],
+          ['Boards', 'Revenue', d.boardsRev],
+          ['Modules', 'Revenue', d.modulesRev],
+          ['Revenue', 'Gross Profit', d.grossProfit],
+          ['Revenue', 'Cost of Sales', d.totalCOGS],
+          ['Gross Profit', 'EBITDA', Math.abs(d.ebitda)],
+          ['Gross Profit', 'S&M', Math.abs(d.sm)],
+          ['Gross Profit', 'R&D', Math.abs(d.rd)],
+          ['Gross Profit', 'G&A', Math.abs(d.ga)],
+        ];
+        if (otherOpEx > 0) links.push(['Gross Profit', 'Other OpEx', otherOpEx]);
+        return links;
+      })()
     }]
   });
 
