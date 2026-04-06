@@ -231,6 +231,25 @@ async function loadData() {
     }
     allData[scenario] = scenarioData;
   }
+
+  // Compute "Total" (sum of all years) for each scenario
+  const sumKeys = ['bespokeRev','modulesRev','boardsRev','totalRev',
+    'bespokeCOGS','modulesCOGS','boardsCOGS','totalCOGS',
+    'grossProfit','sm','rd','ga','totalOpEx','ebitda','fcf','closingCash','nreRev'];
+  for (const scenario of scenarios) {
+    if (!allData[scenario]) continue;
+    const totals = {};
+    for (const key of sumKeys) totals[key] = 0;
+    for (const year of years) {
+      const yd = allData[scenario][year];
+      if (!yd) continue;
+      for (const key of sumKeys) totals[key] += (yd[key] || 0);
+    }
+    // Compute weighted-average margins from the totals
+    totals.grossMargin = totals.totalRev ? totals.grossProfit / totals.totalRev : 0;
+    totals.ebitdaMargin = totals.totalRev ? totals.ebitda / totals.totalRev : 0;
+    allData[scenario]['Total'] = totals;
+  }
 }
 
 function fmt(v) {
@@ -244,7 +263,8 @@ function renderSankey(year) {
   activeYear = year;
   const d = allData[activeScenario] && allData[activeScenario][year];
   if (!d) return;
-  document.getElementById('yearLabel').textContent = year + ' \u2014 ' + activeScenario + ' Scenario';
+  const yearDisplay = year === 'Total' ? '2026\u201330 Total' : year;
+  document.getElementById('yearLabel').textContent = yearDisplay + ' \u2014 ' + activeScenario + ' Scenario';
 
   const COL = {
     bespoke: '#3b82f6', boards: '#f59e0b', modules: '#22c55e',
@@ -426,10 +446,12 @@ scenarios.forEach(s => {
 });
 
 const tabsEl = document.getElementById('yearTabs');
-years.forEach((y, i) => {
+const allYearOptions = [...years, 'Total'];
+allYearOptions.forEach((y, i) => {
   const tab = document.createElement('div');
   tab.className = 'year-tab' + (i === 0 ? ' active' : '');
-  tab.textContent = y;
+  tab.setAttribute('data-year', y);
+  tab.textContent = y === 'Total' ? '2026\u201330' : y;
   tab.onclick = () => {
     document.querySelectorAll('.year-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
@@ -440,7 +462,7 @@ years.forEach((y, i) => {
 
 const params = new URLSearchParams(window.location.search);
 if (params.get('scenario') && scenarios.includes(params.get('scenario'))) activeScenario = params.get('scenario');
-if (params.get('year') && years.includes(params.get('year'))) activeYear = params.get('year');
+if (params.get('year') && [...years, 'Total'].includes(params.get('year'))) activeYear = params.get('year');
 
 (async () => {
   try {
@@ -452,7 +474,7 @@ if (params.get('year') && years.includes(params.get('year'))) activeYear = param
     console.log('Row labels in ' + activeScenario + ':', labels);
 
     document.querySelectorAll('.scenario-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-scenario') === activeScenario));
-    document.querySelectorAll('.year-tab').forEach(t => t.classList.toggle('active', t.textContent === activeYear));
+    document.querySelectorAll('.year-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-year') === activeYear));
     renderSankey(activeYear);
   } catch (err) {
     setStatus('error', 'Failed: ' + err.message);
