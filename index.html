@@ -81,7 +81,7 @@
 
 <div class="header">
   <h1>P&L Sankey &#8212; Revenue & Cost Breakdown</h1>
-  <div class="sub">45_Combined &middot; Sourced from Grinn MCP Server via Microsoft Graph API</div>
+  <div class="sub">45_Combined &middot; Grinn Financial Model</div>
 </div>
 <div class="status-bar" id="statusBar">
   <span class="status-dot loading" id="statusDot"></span>
@@ -103,130 +103,88 @@
 <div class="kpi-row" id="kpis"></div>
 
 <script>
-// -- MCP Server config (Graph API via grinn-mcp) --
-const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
-const DRIVE_ITEM_PATH = 'Grinn/Grinn_v17_r41.xlsm';
-const WORKBOOK_URL = `${GRAPH_BASE}/me/drive/root:/${DRIVE_ITEM_PATH}:/workbook`;
-const SHEET = '45_Combined';
-
-const CLIENT_ID = '41358f91-0b50-4cb7-bde8-60d546432369';
-const TENANT_ID = '4e94611e-6eea-4f3d-951d-579ac8064d5c';
-const SCOPES = ['Files.ReadWrite'];
-
-const SNAPSHOT_STARTS = { Bull: 30, Base: 59, Bear: 88, Organic: 114 };
-const N_ROWS = 24;
-
-const years = ['2026', '2027', '2028', '2029', '2030'];
-
-const ROW_OFFSET = {
-  bespokeRev: 0, modulesRev: 1, boardsRev: 2, totalRev: 3,
-  bespokeCOGS: 4, modulesCOGS: 5, boardsCOGS: 6, totalCOGS: 7,
-  grossProfit: 8, grossMargin: 9,
-  sm: 10, rd: 11, ga: 12, totalOpEx: 13,
-  ebitda: 14, ebitdaMargin: 15
+// ── Label-to-key mapping ─────────────────────────────────────────────
+// The data.json uses the actual Excel row labels as keys.
+// This map translates them to the internal field names the chart uses.
+// We'll discover the real labels at runtime and map flexibly.
+const LABEL_MAP = {
+  // Revenue
+  'Bespoke':     'bespokeRev',
+  'Modules':     'modulesRev',
+  'Boards':      'boardsRev',
+  'Total Revenue': 'totalRev',
+  'Revenue':     'totalRev',
+  // COGS
+  'Bespoke COGS': 'bespokeCOGS',
+  'Modules COGS': 'modulesCOGS',
+  'Boards COGS':  'boardsCOGS',
+  'Total COGS':   'totalCOGS',
+  'COGS':         'totalCOGS',
+  // Profit
+  'Gross Profit':  'grossProfit',
+  'Gross Margin':  'grossMargin',
+  'GM%':           'grossMargin',
+  // OpEx
+  'S&M':         'sm',
+  'Sales & Marketing': 'sm',
+  'R&D':         'rd',
+  'Research & Development': 'rd',
+  'G&A':         'ga',
+  'General & Administrative': 'ga',
+  'Total OpEx':  'totalOpEx',
+  'OpEx':        'totalOpEx',
+  // Bottom line
+  'EBITDA':        'ebitda',
+  'EBITDA Margin': 'ebitdaMargin',
+  'EBITDA%':       'ebitdaMargin',
+  // NRE (if present)
+  'NRE':         'nreRev',
+  'NRE Revenue': 'nreRev',
 };
 
 const scenarios = ['Bull', 'Base', 'Bear', 'Organic'];
+const years = ['2026', '2027', '2028', '2029', '2030'];
 let allData = {};
+let rawLabels = {};  // per-scenario labels from data.json
 let activeScenario = 'Base';
 let activeYear = '2026';
-let msalInstance = null;
-let accessToken = null;
 let chart = null;
+let dataTimestamp = null;
 
-// -- MSAL Auth --
-async function initAuth() {
-  if (!window.msal) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js';
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('Failed to load MSAL library from CDN'));
-      document.head.appendChild(s);
-    });
-  }
-  msalInstance = new msal.PublicClientApplication({
-    auth: {
-      clientId: CLIENT_ID,
-      authority: `https://login.microsoftonline.com/${TENANT_ID}`,
-      redirectUri: window.location.origin + window.location.pathname,
-    },
-    cache: { cacheLocation: 'localStorage' },
-  });
-  await msalInstance.initialize();
-  try {
-    const resp = await msalInstance.handleRedirectPromise();
-    if (resp) { accessToken = resp.accessToken; return; }
-  } catch (e) { console.warn('Redirect handling:', e); }
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length > 0) {
-    try {
-      const result = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
-      accessToken = result.accessToken; return;
-    } catch (e) { console.warn('Silent auth failed:', e); }
-  }
-  try {
-    const result = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
-    accessToken = result.accessToken;
-  } catch (e) { await msalInstance.acquireTokenRedirect({ scopes: SCOPES }); }
-}
+// ── Load static data.json ────────────────────────────────────────────
+async function loadData() {
+  setStatus('loading', 'Loading model data...');
+  const res = await fetch('data.json?t=' + Date.now());
+  if (!res.ok) throw new Error(`Failed to load data.json: ${res.status}`);
+  const json = await res.json();
+  dataTimestamp = json.updated;
 
-// -- Graph API --
-let sessionId = null;
-async function createWorkbookSession() {
-  try {
-    const res = await fetch(`${WORKBOOK_URL}/createSession`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ persistChanges: false })
-    });
-    if (res.ok) { const data = await res.json(); sessionId = data.id; }
-  } catch (e) { console.warn('Session creation failed:', e); }
-}
-
-async function graphGet(url, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    const headers = { 'Authorization': `Bearer ${accessToken}` };
-    if (sessionId) headers['workbook-session-id'] = sessionId;
-    const res = await fetch(url, { headers });
-    if (res.ok) return res.json();
-    if (res.status === 504 && i < retries - 1) {
-      setStatus('loading', `Graph API timeout, retrying (${i+1}/${retries-1})...`);
-      await new Promise(r => setTimeout(r, 3000 * (i + 1)));
-      continue;
-    }
-    const text = await res.text();
-    throw new Error(`Graph API ${res.status}: ${text.substring(0, 200)}`);
-  }
-}
-
-async function readRange(sheet, address) {
-  const url = `${WORKBOOK_URL}/worksheets('${sheet}')/range(address='${address}')`;
-  const data = await graphGet(url);
-  return data.values || [];
-}
-
-async function fetchAllScenarios() {
-  const firstRow = 30, lastRow = 114 + N_ROWS - 1;
-  const address = `B${firstRow}:F${lastRow}`;
-  setStatus('loading', 'Reading all scenarios...');
-  const allValues = await readRange(SHEET, address);
   for (const scenario of scenarios) {
-    const blockStart = SNAPSHOT_STARTS[scenario] - firstRow;
+    const block = json.scenarios[scenario];
+    if (!block) continue;
+    rawLabels[scenario] = block.labels || [];
     const scenarioData = {};
-    for (let yi = 0; yi < years.length; yi++) {
+
+    for (const year of years) {
+      const yearRaw = block.data[year] || {};
       const yearData = {};
-      for (const [key, offset] of Object.entries(ROW_OFFSET)) {
-        const row = blockStart + offset;
-        yearData[key] = allValues[row] ? (allValues[row][yi] || 0) : 0;
+
+      // Map every label we find to internal keys
+      for (const [label, value] of Object.entries(yearRaw)) {
+        const key = LABEL_MAP[label];
+        if (key) {
+          yearData[key] = typeof value === 'number' ? value : 0;
+        }
+        // Also store raw label access for discovery
+        yearData['_raw_' + label] = value;
       }
-      scenarioData[years[yi]] = yearData;
+      scenarioData[year] = yearData;
     }
     allData[scenario] = scenarioData;
   }
 }
 
-// -- Formatting --
+// ── Formatting ───────────────────────────────────────────────────────
 function fmt(v) {
   if (Math.abs(v) >= 1e6) return '\u20AC' + (v / 1e6).toFixed(1) + 'M';
   if (Math.abs(v) >= 1e3) return '\u20AC' + (v / 1e3).toFixed(0) + 'k';
@@ -234,7 +192,7 @@ function fmt(v) {
 }
 function pct(v) { return (v * 100).toFixed(1) + '%'; }
 
-// -- Render Sankey with Highcharts --
+// ── Render Sankey ────────────────────────────────────────────────────
 function renderSankey(year) {
   activeYear = year;
   const d = allData[activeScenario] && allData[activeScenario][year];
@@ -243,11 +201,52 @@ function renderSankey(year) {
 
   const COL = {
     bespoke: '#3b82f6', boards: '#f59e0b', modules: '#22c55e',
+    nre: '#06b6d4',
     revenue: '#1e3a5f',
     gp: '#10b981', cogs: '#ef4444',
     ebitda: '#22c55e', sm: '#e879f9', rd: '#818cf8', ga: '#fb923c',
     bespokeCogs: '#f87171', modulesCogs: '#fb923c', boardsCogs: '#fbbf24'
   };
+
+  // Build nodes and links dynamically based on available data
+  const nodes = [];
+  const links = [];
+
+  // Column 0: Revenue sources
+  const revSources = [];
+  if (d.bespokeRev > 0) { nodes.push({ id: 'Bespoke', color: COL.bespoke, column: 0 }); revSources.push(['Bespoke', d.bespokeRev]); }
+  if (d.boardsRev > 0)  { nodes.push({ id: 'Boards', color: COL.boards, column: 0 }); revSources.push(['Boards', d.boardsRev]); }
+  if (d.modulesRev > 0)  { nodes.push({ id: 'Modules', color: COL.modules, column: 0 }); revSources.push(['Modules', d.modulesRev]); }
+  if (d.nreRev > 0)      { nodes.push({ id: 'NRE', color: COL.nre, column: 0 }); revSources.push(['NRE', d.nreRev]); }
+
+  // Column 1: Revenue
+  nodes.push({ id: 'Revenue', color: COL.revenue, column: 1 });
+  for (const [name, val] of revSources) links.push([name, 'Revenue', val]);
+
+  // Column 2: GP + COGS
+  nodes.push({ id: 'Gross Profit', color: COL.gp, column: 2 });
+  nodes.push({ id: 'COGS', color: COL.cogs, column: 2 });
+  links.push(['Revenue', 'Gross Profit', d.grossProfit || 0]);
+  links.push(['Revenue', 'COGS', d.totalCOGS || 0]);
+
+  // Column 3: GP breakdown (OpEx + EBITDA)
+  nodes.push({ id: 'EBITDA', color: COL.ebitda, column: 3 });
+  links.push(['Gross Profit', 'EBITDA', Math.abs(d.ebitda || 0)]);
+
+  if (d.sm) { nodes.push({ id: 'S&M', color: COL.sm, column: 3 }); links.push(['Gross Profit', 'S&M', Math.abs(d.sm)]); }
+  if (d.rd) { nodes.push({ id: 'R&D', color: COL.rd, column: 3 }); links.push(['Gross Profit', 'R&D', Math.abs(d.rd)]); }
+  if (d.ga) { nodes.push({ id: 'G&A', color: COL.ga, column: 3 }); links.push(['Gross Profit', 'G&A', Math.abs(d.ga)]); }
+
+  const otherOpEx = (d.totalOpEx || 0) - Math.abs(d.sm || 0) - Math.abs(d.rd || 0) - Math.abs(d.ga || 0);
+  if (otherOpEx > 0) {
+    nodes.push({ id: 'Other OpEx', color: '#94a3b8', column: 3 });
+    links.push(['Gross Profit', 'Other OpEx', otherOpEx]);
+  }
+
+  // Column 3: COGS breakdown
+  if (d.bespokeCOGS) { nodes.push({ id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 }); links.push(['COGS', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]); }
+  if (d.modulesCOGS) { nodes.push({ id: 'Modules COGS', color: COL.modulesCogs, column: 3 }); links.push(['COGS', 'Modules COGS', Math.abs(d.modulesCOGS)]); }
+  if (d.boardsCOGS)  { nodes.push({ id: 'Boards COGS', color: COL.boardsCogs, column: 3 }); links.push(['COGS', 'Boards COGS', Math.abs(d.boardsCOGS)]); }
 
   if (chart) chart.destroy();
 
@@ -269,7 +268,7 @@ function renderSankey(year) {
       pointFormatter: function() {
         return this.fromNode.name + ' \u2192 ' + this.toNode.name +
           '<br><b>' + fmt(this.weight) + '</b>' +
-          ' (' + pct(this.weight / d.totalRev) + ' of revenue)';
+          ' (' + pct(this.weight / (d.totalRev || 1)) + ' of revenue)';
       }
     },
     plotOptions: {
@@ -283,17 +282,13 @@ function renderSankey(year) {
         dataLabels: {
           enabled: true,
           color: '#e0e0e0',
-          style: {
-            fontSize: '11px',
-            fontWeight: '600',
-            textOutline: 'none'
-          },
+          style: { fontSize: '11px', fontWeight: '600', textOutline: 'none' },
           nodeFormatter: function() {
             const name = this.point.name || this.key;
             let extra = '';
-            if (name === 'Gross Profit') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.grossMargin) + ' margin</span>';
-            else if (name === 'EBITDA') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.ebitdaMargin) + ' margin</span>';
-            else if (name !== 'Revenue') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / d.totalRev) + ' of rev</span>';
+            if (name === 'Gross Profit') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.grossMargin || 0) + ' margin</span>';
+            else if (name === 'EBITDA') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.ebitdaMargin || 0) + ' margin</span>';
+            else if (name !== 'Revenue') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / (d.totalRev || 1)) + ' of rev</span>';
             return '<span style="font-weight:600">' + name + '</span><br>' + fmt(this.point.sum) + extra;
           },
           useHTML: true
@@ -307,42 +302,8 @@ function renderSankey(year) {
     series: [{
       type: 'sankey',
       keys: ['from', 'to', 'weight'],
-      nodes: [
-        { id: 'Bespoke', color: COL.bespoke, column: 0 },
-        { id: 'Boards', color: COL.boards, column: 0 },
-        { id: 'Modules', color: COL.modules, column: 0 },
-        { id: 'Revenue', color: COL.revenue, column: 1 },
-        { id: 'Gross Profit', color: COL.gp, column: 2 },
-        { id: 'COGS', color: COL.cogs, column: 2 },
-        { id: 'EBITDA', color: COL.ebitda, column: 3 },
-        { id: 'S&M', color: COL.sm, column: 3 },
-        { id: 'R&D', color: COL.rd, column: 3 },
-        { id: 'G&A', color: COL.ga, column: 3 },
-        { id: 'Other OpEx', color: '#94a3b8', column: 3 },
-        { id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 },
-        { id: 'Modules COGS', color: COL.modulesCogs, column: 3 },
-        { id: 'Boards COGS', color: COL.boardsCogs, column: 3 },
-      ],
-      data: (function() {
-        const otherOpEx = d.totalOpEx - Math.abs(d.sm) - Math.abs(d.rd) - Math.abs(d.ga);
-        const links = [
-          ['Bespoke', 'Revenue', d.bespokeRev],
-          ['Boards', 'Revenue', d.boardsRev],
-          ['Modules', 'Revenue', d.modulesRev],
-          ['Revenue', 'Gross Profit', d.grossProfit],
-          ['Revenue', 'COGS', d.totalCOGS],
-          ['Gross Profit', 'EBITDA', Math.abs(d.ebitda)],
-          ['Gross Profit', 'S&M', Math.abs(d.sm)],
-          ['Gross Profit', 'R&D', Math.abs(d.rd)],
-          ['Gross Profit', 'G&A', Math.abs(d.ga)],
-        ];
-        if (otherOpEx > 0) links.push(['Gross Profit', 'Other OpEx', otherOpEx]);
-        // COGS breakdown (right of COGS bar)
-        links.push(['COGS', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]);
-        links.push(['COGS', 'Modules COGS', Math.abs(d.modulesCOGS)]);
-        links.push(['COGS', 'Boards COGS', Math.abs(d.boardsCOGS)]);
-        return links;
-      })()
+      nodes: nodes,
+      data: links
     }]
   });
 
@@ -350,26 +311,26 @@ function renderSankey(year) {
   document.getElementById('kpis').innerHTML = `
     <div class="kpi">
       <div class="kpi-label">Total Revenue</div>
-      <div class="kpi-value blue">${fmt(d.totalRev)}</div>
+      <div class="kpi-value blue">${fmt(d.totalRev || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Gross Profit</div>
-      <div class="kpi-value green">${fmt(d.grossProfit)}</div>
-      <div class="kpi-sub">Margin: ${pct(d.grossMargin)}</div>
+      <div class="kpi-value green">${fmt(d.grossProfit || 0)}</div>
+      <div class="kpi-sub">Margin: ${pct(d.grossMargin || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Total OpEx</div>
-      <div class="kpi-value amber">${fmt(d.totalOpEx)}</div>
-      <div class="kpi-sub">${pct(d.totalOpEx / d.totalRev)} of revenue</div>
+      <div class="kpi-value amber">${fmt(d.totalOpEx || 0)}</div>
+      <div class="kpi-sub">${pct((d.totalOpEx || 0) / (d.totalRev || 1))} of revenue</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">EBITDA</div>
-      <div class="kpi-value ${d.ebitda >= 0 ? 'green' : 'red'}">${fmt(d.ebitda)}</div>
-      <div class="kpi-sub">Margin: ${pct(d.ebitdaMargin)}</div>
+      <div class="kpi-value ${(d.ebitda || 0) >= 0 ? 'green' : 'red'}">${fmt(d.ebitda || 0)}</div>
+      <div class="kpi-sub">Margin: ${pct(d.ebitdaMargin || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Revenue Mix</div>
-      <div class="kpi-value purple">${pct(d.modulesRev / d.totalRev)}</div>
+      <div class="kpi-value purple">${pct((d.modulesRev || 0) / (d.totalRev || 1))}</div>
       <div class="kpi-sub">Modules share</div>
     </div>
   `;
@@ -380,7 +341,7 @@ function setStatus(state, msg) {
   document.getElementById('statusText').textContent = msg;
 }
 
-// Scenario tabs
+// ── Scenario tabs ────────────────────────────────────────────────────
 const scenarioTabsEl = document.getElementById('scenarioTabs');
 scenarios.forEach(s => {
   const tab = document.createElement('div');
@@ -396,7 +357,7 @@ scenarios.forEach(s => {
   scenarioTabsEl.appendChild(tab);
 });
 
-// Year tabs
+// ── Year tabs ────────────────────────────────────────────────────────
 const tabsEl = document.getElementById('yearTabs');
 years.forEach((y, i) => {
   const tab = document.createElement('div');
@@ -410,20 +371,22 @@ years.forEach((y, i) => {
   tabsEl.appendChild(tab);
 });
 
-// URL params
+// ── URL params ───────────────────────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
 if (params.get('scenario') && scenarios.includes(params.get('scenario'))) activeScenario = params.get('scenario');
 if (params.get('year') && years.includes(params.get('year'))) activeYear = params.get('year');
 
+// ── Boot ─────────────────────────────────────────────────────────────
 (async () => {
   try {
-    setStatus('loading', 'Authenticating with Microsoft Graph API...');
-    await initAuth();
-    setStatus('loading', 'Opening workbook session...');
-    await createWorkbookSession();
-    setStatus('loading', 'Fetching scenario data from Grinn model...');
-    await fetchAllScenarios();
-    setStatus('live', `Live from Graph API \u2014 last fetched ${new Date().toLocaleTimeString()}`);
+    await loadData();
+    const ts = dataTimestamp ? new Date(dataTimestamp).toLocaleString() : 'unknown';
+    setStatus('live', `Data snapshot from ${ts}`);
+
+    // Log discovered labels for debugging
+    const labels = rawLabels[activeScenario] || [];
+    console.log('Row labels in ' + activeScenario + ':', labels);
+
     document.querySelectorAll('.scenario-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-scenario') === activeScenario));
     document.querySelectorAll('.year-tab').forEach(t => t.classList.toggle('active', t.textContent === activeYear));
     renderSankey(activeYear);
