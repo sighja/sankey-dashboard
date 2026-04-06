@@ -238,12 +238,6 @@ function renderSankey(year) {
   links.push(['Revenue', 'Gross Profit', d.grossProfit || 0]);
   if (hwCOGS > 0) links.push(['Revenue', 'Hardware COGS', hwCOGS]);
 
-  // Bespoke COGS: direct link from Revenue → column 3 (spans across)
-  if (d.bespokeCOGS) {
-    nodes.push({ id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 });
-    links.push(['Revenue', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]);
-  }
-
   // Column 3: GP breakdown (OpEx + EBITDA)
   nodes.push({ id: 'EBITDA', color: COL.ebitda, column: 3 });
   links.push(['Gross Profit', 'EBITDA', Math.abs(d.ebitda || 0)]);
@@ -256,6 +250,12 @@ function renderSankey(year) {
   if (otherOpEx > 0) {
     nodes.push({ id: 'Other OpEx', color: '#94a3b8', column: 3 });
     links.push(['Gross Profit', 'Other OpEx', otherOpEx]);
+  }
+
+  // Bespoke COGS: direct link from Revenue → column 3 (positioned below OpEx items)
+  if (d.bespokeCOGS) {
+    nodes.push({ id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 });
+    links.push(['Revenue', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]);
   }
 
   // Column 3: Hardware COGS breakdown
