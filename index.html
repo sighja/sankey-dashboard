@@ -59,7 +59,7 @@
   .chart-container .year-label {
     position: absolute; top: 16px; left: 24px; font-size: 14px; color: #666; z-index: 10;
   }
-  #sankeyChart { width: 100%; height: 580px; }
+  #sankeyChart { width: 100%; height: 640px; }
   .kpi-row { display: flex; gap: 16px; padding: 0 40px 24px; flex-wrap: wrap; }
   .kpi {
     background: #1a1d27; border: 1px solid #2a2d37; border-radius: 10px;
@@ -245,7 +245,8 @@ function renderSankey(year) {
     bespoke: '#3b82f6', boards: '#f59e0b', modules: '#22c55e',
     revenue: '#1e3a5f',
     gp: '#10b981', cogs: '#ef4444',
-    ebitda: '#22c55e', sm: '#e879f9', rd: '#818cf8', ga: '#fb923c'
+    ebitda: '#22c55e', sm: '#e879f9', rd: '#818cf8', ga: '#fb923c',
+    bespokeCogs: '#f87171', modulesCogs: '#fb923c', boardsCogs: '#fbbf24'
   };
 
   if (chart) chart.destroy();
@@ -273,8 +274,8 @@ function renderSankey(year) {
     },
     plotOptions: {
       sankey: {
-        nodeWidth: 14,
-        nodePadding: 30,
+        nodeWidth: 8,
+        nodePadding: 36,
         curveFactor: 0.6,
         linkOpacity: 0.45,
         borderWidth: 0,
@@ -307,26 +308,42 @@ function renderSankey(year) {
       type: 'sankey',
       keys: ['from', 'to', 'weight'],
       nodes: [
+        // Col 0: Revenue sources
         { id: 'Bespoke', color: COL.bespoke, column: 0 },
         { id: 'Boards', color: COL.boards, column: 0 },
         { id: 'Modules', color: COL.modules, column: 0 },
+        // Col 1: Total Revenue
         { id: 'Revenue', color: COL.revenue, column: 1 },
+        // Col 2: GP + COGS breakdown
         { id: 'Gross Profit', color: COL.gp, column: 2 },
-        { id: 'Cost of Sales', color: COL.cogs, column: 2 },
+        { id: 'Bespoke COGS', color: COL.bespokeCogs, column: 2 },
+        { id: 'Modules COGS', color: COL.modulesCogs, column: 2 },
+        { id: 'Boards COGS', color: COL.boardsCogs, column: 2 },
+        // Col 3: EBITDA/OpEx + Cost of Sales summary
         { id: 'EBITDA', color: COL.ebitda, column: 3 },
         { id: 'S&M', color: COL.sm, column: 3 },
         { id: 'R&D', color: COL.rd, column: 3 },
         { id: 'G&A', color: COL.ga, column: 3 },
         { id: 'Other OpEx', color: '#94a3b8', column: 3 },
+        { id: 'Cost of Sales', color: COL.cogs, column: 3 },
       ],
       data: (function() {
         const otherOpEx = d.totalOpEx - Math.abs(d.sm) - Math.abs(d.rd) - Math.abs(d.ga);
         const links = [
+          // Rev sources -> Revenue
           ['Bespoke', 'Revenue', d.bespokeRev],
           ['Boards', 'Revenue', d.boardsRev],
           ['Modules', 'Revenue', d.modulesRev],
+          // Revenue -> GP + individual COGS
           ['Revenue', 'Gross Profit', d.grossProfit],
-          ['Revenue', 'Cost of Sales', d.totalCOGS],
+          ['Revenue', 'Bespoke COGS', Math.abs(d.bespokeCOGS)],
+          ['Revenue', 'Modules COGS', Math.abs(d.modulesCOGS)],
+          ['Revenue', 'Boards COGS', Math.abs(d.boardsCOGS)],
+          // Individual COGS -> Cost of Sales summary
+          ['Bespoke COGS', 'Cost of Sales', Math.abs(d.bespokeCOGS)],
+          ['Modules COGS', 'Cost of Sales', Math.abs(d.modulesCOGS)],
+          ['Boards COGS', 'Cost of Sales', Math.abs(d.boardsCOGS)],
+          // GP -> EBITDA + OpEx
           ['Gross Profit', 'EBITDA', Math.abs(d.ebitda)],
           ['Gross Profit', 'S&M', Math.abs(d.sm)],
           ['Gross Profit', 'R&D', Math.abs(d.rd)],
