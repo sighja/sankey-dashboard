@@ -103,7 +103,7 @@
 <div class="kpi-row" id="kpis"></div>
 
 <script>
-// ââ Override Sankey node ordering ââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂ Override Sankey node ordering Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 // Reorder column 3 so COGS items are below Operating Profit/Expenses,
 // and recompute shapeArgs + links after reordering.
 (function(H) {
@@ -141,7 +141,7 @@
   };
 })(Highcharts);
 
-// ââ Label-to-key mapping âââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂ Label-to-key mapping Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 const LABEL_MAP = {
   'Bespoke':         'bespokeRev',
   'Bespoke Revenue': 'bespokeRev',
@@ -235,7 +235,8 @@ function renderSankey(year) {
     revenue: '#1e3a5f',
     gp: '#10b981', cogs: '#ef4444',
     ebitda: '#22c55e', sm: '#e879f9', rd: '#818cf8', ga: '#fb923c',
-    bespokeCogs: '#f87171', modulesCogs: '#fb923c', boardsCogs: '#fbbf24'
+    bespokeCogs: '#f87171', modulesCogs: '#fb923c', boardsCogs: '#fbbf24',
+    netProfit: '#34d399', tax: '#a78bfa'
   };
 
   const nodes = [];
@@ -275,6 +276,17 @@ function renderSankey(year) {
   if (d.bespokeCOGS) { nodes.push({ id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 }); links.push(['Gross COGS', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]); }
   if (d.modulesCOGS) { nodes.push({ id: 'Modules COGS', color: COL.modulesCogs, column: 3 }); links.push(['Gross COGS', 'Modules COGS', Math.abs(d.modulesCOGS)]); }
   if (d.boardsCOGS)  { nodes.push({ id: 'Boards COGS', color: COL.boardsCogs, column: 3 }); links.push(['Gross COGS', 'Boards COGS', Math.abs(d.boardsCOGS)]); }
+
+  // Column 4: Operating Profit -> Net Profit + Tax
+  const TAX_RATE = 0.20;
+  if (opProfit > 0) {
+    const taxAmount = opProfit * TAX_RATE;
+    const netProfitAmount = opProfit - taxAmount;
+    nodes.push({ id: 'Net Profit', color: COL.netProfit, column: 4 });
+    nodes.push({ id: 'Tax', color: COL.tax, column: 4 });
+    links.push(['Operating Profit', 'Net Profit', netProfitAmount]);
+    links.push(['Operating Profit', 'Tax', taxAmount]);
+  }
 
   // Column 4: Operating Expenses -> S&M, R&D, G&A, Other OpEx
   if (d.sm) { nodes.push({ id: 'S&M', color: COL.sm, column: 4 }); links.push(['Operating Expenses', 'S&M', Math.abs(d.sm)]); }
@@ -327,6 +339,8 @@ function renderSankey(year) {
             let extra = '';
             if (name === 'Gross Profit') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.grossMargin || 0) + ' margin</span>';
             else if (name === 'Operating Profit') extra = '<br><span style="font-size:10px;color:#888">' + pct(d.ebitdaMargin || 0) + ' margin</span>';
+            else if (name === 'Net Profit') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / (d.totalRev || 1)) + ' of rev</span>';
+            else if (name === 'Tax') extra = '<br><span style="font-size:10px;color:#888">20% rate</span>';
             else if (name === 'Gross COGS') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / (d.totalRev || 1)) + ' of rev</span>';
             else if (name === 'Operating Expenses') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / (d.totalRev || 1)) + ' of rev</span>';
             else if (name !== 'Revenue') extra = '<br><span style="font-size:10px;color:#888">' + pct(Math.abs(this.point.sum) / (d.totalRev || 1)) + ' of rev</span>';
@@ -367,6 +381,11 @@ function renderSankey(year) {
       <div class="kpi-label">Operating Profit (EBITDA)</div>
       <div class="kpi-value ${(d.ebitda || 0) >= 0 ? 'green' : 'red'}">${fmt(d.ebitda || 0)}</div>
       <div class="kpi-sub">Margin: ${pct(d.ebitdaMargin || 0)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Net Profit</div>
+      <div class="kpi-value ${(d.ebitda || 0) >= 0 ? 'green' : 'red'}">${fmt(Math.abs(d.ebitda || 0) * 0.8)}</div>
+      <div class="kpi-sub">After 20% tax</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Revenue Mix</div>
