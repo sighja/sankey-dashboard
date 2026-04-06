@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>P&L Sankey &#8212; Revenue & Cost Breakdown by Year</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -63,9 +64,9 @@
     border: 1px solid #2a2d37; padding: 20px; position: relative;
   }
   .chart-container .year-label {
-    position: absolute; top: 16px; left: 24px; font-size: 14px; color: #666;
+    position: absolute; top: 16px; left: 24px; font-size: 14px; color: #666; z-index: 10;
   }
-  svg { display: block; width: 100%; height: auto; }
+  #sankeyChart { width: 100%; height: 560px; }
   .kpi-row {
     display: flex; gap: 16px; padding: 0 40px 24px; flex-wrap: wrap;
   }
@@ -81,13 +82,6 @@
   .kpi-value.red { color: #f87171; }
   .kpi-value.purple { color: #c084fc; }
   .kpi-sub { font-size: 11px; color: #666; margin-top: 2px; }
-  .tooltip {
-    position: fixed; background: #1a1d27; border: 1px solid #3a3f55;
-    border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #ddd;
-    pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 100;
-    white-space: nowrap;
-  }
-  .tooltip.visible { opacity: 1; }
 </style>
 </head>
 <body>
@@ -111,13 +105,12 @@
 <div class="year-tabs" id="yearTabs"></div>
 <div class="chart-container">
   <div class="year-label" id="yearLabel"></div>
-  <svg id="sankey" viewBox="0 0 960 720" preserveAspectRatio="xMidYMid meet"></svg>
+  <div id="sankeyChart"></div>
 </div>
 <div class="kpi-row" id="kpis"></div>
-<div class="tooltip" id="tooltip"></div>
 
 <script>
-// ââ MCP Server config (Graph API via grinn-mcp) ââ
+// -- MCP Server config (Graph API via grinn-mcp) --
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const DRIVE_ITEM_PATH = 'Grinn/Grinn_v17_r41.xlsm';
 const WORKBOOK_URL = `${GRAPH_BASE}/me/drive/root:/${DRIVE_ITEM_PATH}:/workbook`;
@@ -151,9 +144,8 @@ let activeYear = '2026';
 let msalInstance = null;
 let accessToken = null;
 
-// ââ MSAL Auth ââ
+// -- MSAL Auth --
 async function initAuth() {
-  // Dynamically load MSAL.js
   if (!window.msal) {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
@@ -175,29 +167,20 @@ async function initAuth() {
 
   await msalInstance.initialize();
 
-  // Handle redirect response (if returning from login)
   try {
     const resp = await msalInstance.handleRedirectPromise();
-    if (resp) {
-      accessToken = resp.accessToken;
-      return;
-    }
+    if (resp) { accessToken = resp.accessToken; return; }
   } catch (e) { console.warn('Redirect handling:', e); }
 
-  // Try silent token
   const accounts = msalInstance.getAllAccounts();
   if (accounts.length > 0) {
     try {
-      const result = await msalInstance.acquireTokenSilent({
-        scopes: SCOPES,
-        account: accounts[0],
-      });
+      const result = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
       accessToken = result.accessToken;
       return;
     } catch (e) { console.warn('Silent auth failed, will prompt:', e); }
   }
 
-  // Interactive login via popup
   try {
     const result = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
     accessToken = result.accessToken;
@@ -206,23 +189,17 @@ async function initAuth() {
   }
 }
 
-// ââ Graph API calls ââ
+// -- Graph API calls --
 let sessionId = null;
 
 async function createWorkbookSession() {
   try {
     const res = await fetch(`${WORKBOOK_URL}/createSession`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ persistChanges: false })
     });
-    if (res.ok) {
-      const data = await res.json();
-      sessionId = data.id;
-    }
+    if (res.ok) { const data = await res.json(); sessionId = data.id; }
   } catch (e) { console.warn('Session creation failed:', e); }
 }
 
@@ -248,10 +225,8 @@ async function readRange(sheet, address) {
   return data.values || [];
 }
 
-// ââ Fetch all scenarios from snapshot blocks ââ
+// -- Fetch all scenarios from snapshot blocks --
 async function fetchAllScenarios() {
-  // All 4 scenario blocks live in rows 30–137 of the same sheet.
-  // One read instead of four eliminates 3 round-trips + potential recalcs.
   const firstRow = 30;
   const lastRow = 114 + N_ROWS - 1;
   const address = `B${firstRow}:F${lastRow}`;
@@ -273,7 +248,7 @@ async function fetchAllScenarios() {
   }
 }
 
-// ââ Formatting ââ
+// -- Formatting --
 function fmt(v) {
   if (Math.abs(v) >= 1e6) return '\u20AC' + (v / 1e6).toFixed(1) + 'M';
   if (Math.abs(v) >= 1e3) return '\u20AC' + (v / 1e3).toFixed(0) + 'k';
@@ -281,220 +256,99 @@ function fmt(v) {
 }
 function pct(v) { return (v * 100).toFixed(1) + '%'; }
 
-// ââ Tooltip ââ
-const tooltip = document.getElementById('tooltip');
-function showTip(e, html) {
-  tooltip.innerHTML = html;
-  tooltip.classList.add('visible');
-  tooltip.style.left = (e.clientX + 14) + 'px';
-  tooltip.style.top = (e.clientY - 10) + 'px';
-}
-function hideTip() { tooltip.classList.remove('visible'); }
-
-// ââ Render ââ
+// -- Render Sankey with Plotly.js --
 function renderSankey(year) {
   activeYear = year;
   const d = allData[activeScenario] && allData[activeScenario][year];
   if (!d) return;
-  const svg = document.getElementById('sankey');
-  svg.innerHTML = '';
   document.getElementById('yearLabel').textContent = year + ' \u2014 ' + activeScenario + ' Scenario';
 
-  const W = 960, H = 720;
-  const colX = [120, 320, 540, 780];
-  const nodeW = 24;
-  const topPad = 50;
+  // Node indices:
+  // 0: Bespoke   1: Boards   2: Modules
+  // 3: Revenue
+  // 4: Gross Profit   5: Cost of Sales
+  // 6: EBITDA   7: S&M   8: R&D   9: G&A
 
-  // Defs for gradients
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  svg.appendChild(defs);
-  let gradId = 0;
-  function makeGradient(c1, c2) {
-    const id = 'grad' + (gradId++);
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-    g.setAttribute('id', id);
-    g.setAttribute('gradientUnits', 'userSpaceOnUse');
-    const s1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-    s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', c1); s1.setAttribute('stop-opacity', '0.45');
-    const s2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-    s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', c2); s2.setAttribute('stop-opacity', '0.45');
-    g.appendChild(s1); g.appendChild(s2); defs.appendChild(g);
-    return id;
-  }
+  const nodeLabels = [
+    `Bespoke<br>${fmt(d.bespokeRev)}<br><span style="font-size:10px;color:#999">${pct(d.bespokeRev / d.totalRev)} of rev</span>`,
+    `Boards<br>${fmt(d.boardsRev)}<br><span style="font-size:10px;color:#999">${pct(d.boardsRev / d.totalRev)} of rev</span>`,
+    `Modules<br>${fmt(d.modulesRev)}<br><span style="font-size:10px;color:#999">${pct(d.modulesRev / d.totalRev)} of rev</span>`,
+    `Revenue<br>${fmt(d.totalRev)}`,
+    `Gross Profit<br>${fmt(d.grossProfit)}<br><span style="font-size:10px;color:#999">${pct(d.grossMargin)} margin</span>`,
+    `Cost of Sales<br>${fmt(d.totalCOGS)}<br><span style="font-size:10px;color:#999">${pct(d.totalCOGS / d.totalRev)} of rev</span>`,
+    `EBITDA<br>${fmt(d.ebitda)}<br><span style="font-size:10px;color:#999">${pct(d.ebitdaMargin)} margin</span>`,
+    `S&M<br>${fmt(d.sm)}<br><span style="font-size:10px;color:#999">${pct(d.sm / d.totalRev)} of rev</span>`,
+    `R&D<br>${fmt(d.rd)}<br><span style="font-size:10px;color:#999">${pct(d.rd / d.totalRev)} of rev</span>`,
+    `G&A<br>${fmt(d.ga)}<br><span style="font-size:10px;color:#999">${pct(d.ga / d.totalRev)} of rev</span>`,
+  ];
 
-  // Color palette - distinct saturated colors per business segment
-  const COL = {
-    bespokeRev: '#3b82f6', modulesRev: '#22c55e', boardsRev: '#f59e0b',
-    totalRev: '#64748b', grossProfit: '#10b981',
-    bespokeCOGS: '#ef4444', modulesCOGS: '#f97316', boardsCOGS: '#dc2626',
-    ebitda: '#22c55e', sm: '#e879f9', rd: '#818cf8', ga: '#fb923c'
+  const nodeColors = [
+    '#3b82f6', '#f59e0b', '#22c55e',   // Bespoke, Boards, Modules
+    '#1e3a5f',                           // Revenue
+    '#10b981', '#ef4444',                // Gross Profit, Cost of Sales
+    '#22c55e', '#e879f9', '#818cf8', '#fb923c'  // EBITDA, S&M, R&D, G&A
+  ];
+
+  // Links: source -> target -> value
+  const links = {
+    source: [0, 1, 2, 3, 3, 4, 4, 4, 4],
+    target: [3, 3, 3, 4, 5, 6, 7, 8, 9],
+    value:  [
+      d.bespokeRev, d.boardsRev, d.modulesRev,        // rev sources -> Revenue
+      d.grossProfit, d.totalCOGS,                       // Revenue -> GP, COGS
+      Math.abs(d.ebitda), Math.abs(d.sm), Math.abs(d.rd), Math.abs(d.ga)  // GP -> OpEx breakdown
+    ],
+    color: [
+      'rgba(59,130,246,0.4)',  // Bespoke blue
+      'rgba(245,158,11,0.4)',  // Boards amber
+      'rgba(34,197,94,0.4)',   // Modules green
+      'rgba(16,185,129,0.4)',  // GP green
+      'rgba(239,68,68,0.35)',  // COGS red
+      'rgba(34,197,94,0.35)',  // EBITDA green
+      'rgba(232,121,249,0.35)',// S&M pink
+      'rgba(129,140,248,0.35)',// R&D indigo
+      'rgba(251,146,60,0.35)', // G&A orange
+    ]
   };
 
-  const availH = H - topPad - 20;
-  const scale = (availH * 0.36) / Math.max(d.totalRev, 1);
-  const flowGap = 20; // visual gap between ribbon flows
-
-  // Helper: stack nodes compactly, centered on a given Y midpoint
-  // Bars + gaps sum to the parent bar height — Sankey flow conservation
-  function stackNodes(items, colIdx, useAbs, centerY, totalParentH) {
-    const nodeGap = flowGap;
-    const nGaps = items.length - 1;
-    const totalBarH = items.reduce((s, it) => s + Math.max((useAbs ? Math.abs(it.val) : it.val) * scale, 8), 0);
-    const stackH = totalBarH + nGaps * nodeGap;
-    let y = centerY - stackH / 2;
-    return items.map(s => {
-      const h = Math.max((useAbs ? Math.abs(s.val) : s.val) * scale, 8);
-      const node = { ...s, x: colX[colIdx], y, h };
-      y += h + nodeGap;
-      return node;
-    });
-  }
-
-  // Total Revenue bar — centered in chart
-  const totalRevH = d.totalRev * scale;
-  const chartMidY = topPad + availH / 2;
-  const totalRevY = chartMidY - totalRevH / 2;
-  const totalRevNode = { label: 'Revenue', val: d.totalRev, color: '#1e3a5f', x: colX[1], y: totalRevY, h: totalRevH, barW: 30 };
-
-  // Col 0: Revenue sources — stacked compactly, centered on Revenue bar
-  const revSources = [
-    { label: 'Bespoke', val: d.bespokeRev, color: COL.bespokeRev },
-    { label: 'Boards', val: d.boardsRev, color: COL.boardsRev },
-    { label: 'Modules', val: d.modulesRev, color: COL.modulesRev },
-  ];
-  const revNodes = stackNodes(revSources, 0, false, chartMidY, totalRevH);
-
-  // Col 2: Gross Profit + Cost of Sales — tile perfectly within Revenue bar (no gaps)
-  const gpH = d.grossProfit * scale;
-  const cogsH = d.totalCOGS * scale;
-  const col2Nodes = [
-    { label: 'Gross Profit', val: d.grossProfit, color: COL.grossProfit, x: colX[2], y: totalRevY, h: gpH },
-    { label: 'Cost of Sales', val: d.totalCOGS, color: COL.bespokeCOGS, x: colX[2], y: totalRevY + gpH, h: cogsH },
-  ];
-
-  // Col 3: EBITDA + OpEx — tile perfectly within Gross Profit bar (no gaps)
-  const gpNode = col2Nodes[0];
-  const col3Vals = [
-    { label: 'EBITDA', val: d.ebitda, color: COL.ebitda },
-    { label: 'S&M', val: d.sm, color: COL.sm },
-    { label: 'R&D', val: d.rd, color: COL.rd },
-    { label: 'G&A', val: d.ga, color: COL.ga },
-  ];
-  let col3Y = gpNode.y;
-  const col3Nodes = col3Vals.map(item => {
-    const h = Math.abs(item.val) * scale;
-    const node = { ...item, x: colX[3], y: col3Y, h };
-    col3Y += h;
-    return node;
-  });
-
-  // Curved flow path with smooth organic bezier ribbons
-  function flowPath(sx, sy, sh, tx, ty, th, sw, tw) {
-    const sR = sx + (sw || nodeW), tL = tx;
-    const mid = (sR + tL) / 2;
-    return `M ${sR} ${sy} C ${mid} ${sy}, ${mid} ${ty}, ${tL} ${ty} L ${tL} ${ty+th} C ${mid} ${ty+th}, ${mid} ${sy+sh}, ${sR} ${sy+sh} Z`;
-  }
-
-  // Build all flows with gaps between ribbons for visual separation
-  const allFlows = [];
-  let off1 = totalRevY;
-  revNodes.forEach((n, i) => {
-    const th = n.val * scale;
-    // Carry source color through to the right — don't blend to neutral
-    const gid = makeGradient(n.color, n.color);
-    allFlows.push({ path: flowPath(n.x, n.y, n.h, totalRevNode.x, off1, th, nodeW, totalRevNode.barW), gradId: gid, color: n.color, from: n.label, to: 'Revenue', val: n.val });
-    off1 += th;
-  });
-  let off2 = totalRevY;
-  col2Nodes.forEach((n, i) => {
-    const sh = n.val * scale;
-    const gid = makeGradient(n.color, n.color);
-    allFlows.push({ path: flowPath(totalRevNode.x, off2, sh, n.x, n.y, n.h, totalRevNode.barW, nodeW), gradId: gid, color: n.color, from: 'Revenue', to: n.label, val: n.val });
-    off2 += sh;
-  });
-  let off3 = col2Nodes[0].y;
-  col3Nodes.forEach((n, i) => {
-    const sh = Math.abs(n.val) * scale;
-    const gid = makeGradient(col2Nodes[0].color, n.color);
-    allFlows.push({ path: flowPath(col2Nodes[0].x, off3, sh, n.x, n.y, n.h), gradId: gid, color: n.color, from: 'Gross Profit', to: n.label, val: n.val });
-    off3 += sh;
-  });
-
-  // Render flows
-  allFlows.forEach(f => {
-    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    el.setAttribute('d', f.path);
-    el.setAttribute('fill', `url(#${f.gradId})`);
-    el.setAttribute('stroke', 'none');
-    el.style.cursor = 'pointer';
-    el.style.transition = 'opacity 0.15s';
-    el.addEventListener('mouseenter', e => { el.style.opacity = '0.75'; showTip(e, `<strong>${f.from} \u2192 ${f.to}</strong><br>${fmt(f.val)} (${pct(f.val / d.totalRev)} of rev)`); });
-    el.addEventListener('mousemove', e => { tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY - 10) + 'px'; });
-    el.addEventListener('mouseleave', () => { el.style.opacity = '1'; hideTip(); });
-    svg.appendChild(el);
-  });
-
-  // Render nodes — thin, semi-transparent bars; flows are the primary visual
-  const allN = [...revNodes, totalRevNode, ...col2Nodes, ...col3Nodes];
-  allN.forEach(n => {
-    // Skip invisible nodes (Total Revenue is a pass-through)
-    if (n.invisible) return;
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
-    rect.setAttribute('width', n.barW || nodeW); rect.setAttribute('height', Math.max(n.h, 4));
-    rect.setAttribute('rx', 2); rect.setAttribute('fill', n.color);
-    rect.setAttribute('fill-opacity', '0.75');
-    rect.style.cursor = 'pointer';
-    rect.addEventListener('mouseenter', e => { rect.setAttribute('fill-opacity', '1.0'); showTip(e, `<strong>${n.label}</strong><br>${fmt(n.val)}<br>${pct(n.val / d.totalRev)} of revenue`); });
-    rect.addEventListener('mousemove', e => { tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY - 10) + 'px'; });
-    rect.addEventListener('mouseleave', () => { rect.setAttribute('fill-opacity', '0.75'); hideTip(); });
-    svg.appendChild(rect);
-
-    // Contextual annotation: margin or % of revenue
-    let annotation = '';
-    if (n.label === 'Gross Profit') annotation = pct(d.grossMargin) + ' margin';
-    else if (n.label === 'EBITDA') annotation = pct(d.ebitdaMargin) + ' margin';
-    else if (n.label !== 'Revenue') annotation = pct(Math.abs(n.val) / d.totalRev) + ' of rev';
-
-    const isLeftCol = n.x <= colX[0];
-    const bw = n.barW || nodeW;
-    const FF = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-
-    // All labels go beside the bar: left-side for col 0, right-side for others
-    const textX = isLeftCol ? n.x - 10 : n.x + bw + 10;
-    const anchor = isLeftCol ? 'end' : 'start';
-    const midY = n.y + n.h / 2;
-
-    const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    t1.setAttribute('x', textX); t1.setAttribute('y', midY - 6);
-    t1.setAttribute('text-anchor', anchor); t1.setAttribute('fill', '#fff');
-    t1.setAttribute('font-size', '11'); t1.setAttribute('font-weight', '600');
-    t1.setAttribute('font-family', FF);
-    t1.textContent = n.label; svg.appendChild(t1);
-    const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    t2.setAttribute('x', textX); t2.setAttribute('y', midY + 10);
-    t2.setAttribute('text-anchor', anchor); t2.setAttribute('fill', n.color);
-    t2.setAttribute('font-size', '12'); t2.setAttribute('font-weight', '700');
-    t2.setAttribute('font-family', FF);
-    t2.textContent = fmt(n.val); svg.appendChild(t2);
-    if (annotation && n.h > 20) {
-      const t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t3.setAttribute('x', textX); t3.setAttribute('y', midY + 22);
-      t3.setAttribute('text-anchor', anchor); t3.setAttribute('fill', '#888');
-      t3.setAttribute('font-size', '9'); t3.setAttribute('font-family', FF);
-      t3.textContent = annotation; svg.appendChild(t3);
+  const data = [{
+    type: 'sankey',
+    orientation: 'h',
+    arrangement: 'snap',
+    node: {
+      pad: 24,
+      thickness: 24,
+      line: { color: 'rgba(255,255,255,0.15)', width: 1 },
+      label: nodeLabels,
+      color: nodeColors,
+      hovertemplate: '%{label}<extra></extra>',
+    },
+    link: {
+      source: links.source,
+      target: links.target,
+      value: links.value,
+      color: links.color,
+      hovertemplate: '%{source.label} \u2192 %{target.label}<br>%{value:,.0f}<extra></extra>',
     }
-  });
+  }];
 
-  // Column headers
-  [{ x: colX[0]+nodeW/2, label: 'REVENUE' }, { x: colX[1]+15, label: 'TOTAL' },
-   { x: colX[2]+nodeW/2, label: 'MARGIN / COGS' }, { x: colX[3]+nodeW/2, label: 'EBITDA / OPEX' }].forEach(h => {
-    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    t.setAttribute('x', h.x); t.setAttribute('y', 30); t.setAttribute('text-anchor', 'middle');
-    t.setAttribute('fill', '#555'); t.setAttribute('font-size', '9'); t.setAttribute('letter-spacing', '1.5');
-    t.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
-    t.textContent = h.label; svg.appendChild(t);
-  });
+  const layout = {
+    font: {
+      size: 12,
+      color: '#e0e0e0',
+      family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    },
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    margin: { l: 10, r: 10, t: 10, b: 10 },
+  };
+
+  const config = {
+    displayModeBar: false,
+    responsive: true,
+  };
+
+  Plotly.react('sankeyChart', data, layout, config);
 
   // KPIs
   document.getElementById('kpis').innerHTML = `
