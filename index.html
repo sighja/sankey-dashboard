@@ -359,17 +359,15 @@ function renderSankey(year) {
   // Col 0: Revenue sources — stacked compactly, centered on Revenue bar
   const revSources = [
     { label: 'Bespoke', val: d.bespokeRev, color: COL.bespokeRev },
-    { label: 'Modules', val: d.modulesRev, color: COL.modulesRev },
     { label: 'Boards', val: d.boardsRev, color: COL.boardsRev },
+    { label: 'Modules', val: d.modulesRev, color: COL.modulesRev },
   ];
   const revNodes = stackNodes(revSources, 0, false, chartMidY, totalRevH);
 
-  // Col 2: Gross Profit + COGS — stacked, centered on Revenue bar
+  // Col 2: Gross Profit + Total COGS summary bar — stacked, centered on Revenue bar
   const col2Items = [
     { label: 'Gross Profit', val: d.grossProfit, color: COL.grossProfit },
-    { label: 'Bespoke COGS', val: d.bespokeCOGS, color: COL.bespokeCOGS },
-    { label: 'Modules COGS', val: d.modulesCOGS, color: COL.modulesCOGS },
-    { label: 'Boards COGS', val: d.boardsCOGS, color: COL.boardsCOGS },
+    { label: 'Cost of Sales', val: d.totalCOGS, color: COL.bespokeCOGS },
   ];
   const col2Nodes = stackNodes(col2Items, 2, false, chartMidY, totalRevH);
 
