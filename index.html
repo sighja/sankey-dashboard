@@ -103,7 +103,7 @@
 <div class="kpi-row" id="kpis"></div>
 
 <script>
-// ── Override Sankey node ordering ────────────────────────────────────
+// ââ Override Sankey node ordering ââââââââââââââââââââââââââââââââââââ
 // Reorder column 3 so COGS items are below Operating Profit/Expenses,
 // and recompute shapeArgs + links after reordering.
 (function(H) {
@@ -141,7 +141,7 @@
   };
 })(Highcharts);
 
-// ── Label-to-key mapping ─────────────────────────────────────────────
+// ââ Label-to-key mapping âââââââââââââââââââââââââââââââââââââââââââââ
 const LABEL_MAP = {
   'Bespoke':         'bespokeRev',
   'Bespoke Revenue': 'bespokeRev',
@@ -351,26 +351,26 @@ function renderSankey(year) {
   document.getElementById('kpis').innerHTML = `
     <div class="kpi">
       <div class="kpi-label">Total Revenue</div>
-      <div class="kpi-value blue">\${fmt(d.totalRev || 0)}</div>
+      <div class="kpi-value blue">${fmt(d.totalRev || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Gross Profit</div>
-      <div class="kpi-value green">\${fmt(d.grossProfit || 0)}</div>
-      <div class="kpi-sub">Margin: \${pct(d.grossMargin || 0)}</div>
+      <div class="kpi-value green">${fmt(d.grossProfit || 0)}</div>
+      <div class="kpi-sub">Margin: ${pct(d.grossMargin || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Total OpEx</div>
-      <div class="kpi-value amber">\${fmt(d.totalOpEx || 0)}</div>
-      <div class="kpi-sub">\${pct((d.totalOpEx || 0) / (d.totalRev || 1))} of revenue</div>
+      <div class="kpi-value amber">${fmt(d.totalOpEx || 0)}</div>
+      <div class="kpi-sub">${pct((d.totalOpEx || 0) / (d.totalRev || 1))} of revenue</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Operating Profit (EBITDA)</div>
-      <div class="kpi-value \${(d.ebitda || 0) >= 0 ? 'green' : 'red'}">\${fmt(d.ebitda || 0)}</div>
-      <div class="kpi-sub">Margin: \${pct(d.ebitdaMargin || 0)}</div>
+      <div class="kpi-value ${(d.ebitda || 0) >= 0 ? 'green' : 'red'}">${fmt(d.ebitda || 0)}</div>
+      <div class="kpi-sub">Margin: ${pct(d.ebitdaMargin || 0)}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Revenue Mix</div>
-      <div class="kpi-value purple">\${pct((d.modulesRev || 0) / (d.totalRev || 1))}</div>
+      <div class="kpi-value purple">${pct((d.modulesRev || 0) / (d.totalRev || 1))}</div>
       <div class="kpi-sub">Modules share</div>
     </div>
   `;
