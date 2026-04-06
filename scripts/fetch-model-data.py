@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 """
-Fetch Grinn model scenario snapshots from Excel Online via Microsoft Graph API
-using client credentials (app-only auth). Writes data.json for the dashboard.
+Fetch Grinn model scenario snapshots by downloading the .xlsm file
+via Microsoft Graph API and parsing it locally with openpyxl.
 
-Strategy to handle 504 timeouts on complex workbooks:
-1. Get auth token
-2. Create a persistent workbook session (retries with long waits)
-3. "Warm up" the workbook by reading a tiny range first
-4. Wait for Excel Online to finish loading/calculating
-5. Read each scenario block individually
+This avoids Excel Online's calculation engine (which 504s on complex workbooks)
+by downloading the raw file and reading cell values directly.
 """
-import json, os, sys, time
+import json, os, sys, tempfile
 from datetime import datetime, timezone
 from urllib.request import Request, urlopen
-from urllib.parse import quote
 from urllib.error import HTTPError
 
 # ── Config ──────────────────────────────────────────────────────────────
@@ -30,6 +25,7 @@ TOKEN_URL     = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/toke
 SCENARIOS     = ["Bull", "Base", "Bear", "Organic"]
 SNAPSHOT_STARTS = {"Bull": 30, "Base": 59, "Bear": 88, "Organic": 114}
 N_ROWS        = 24
+COL_COUNT     = 6  # A through F
 YEARS         = ["2026", "2027", "2028", "2029", "2030"]
 
 # ── Auth ────────────────────────────────────────────────────────────────
@@ -44,100 +40,52 @@ def get_app_token():
     resp = json.loads(urlopen(req).read())
     return resp["access_token"]
 
-# ── Graph helpers ───────────────────────────────────────────────────────
-def workbook_url():
-    return f"{GRAPH_BASE}/users/{USER_ID}/drive/root:/{DRIVE_PATH}:/workbook"
+# ── Download ────────────────────────────────────────────────────────────
+def download_workbook(token):
+    """Download the raw .xlsm file via Graph API (no Excel Online needed)."""
+    url = f"{GRAPH_BASE}/users/{USER_ID}/drive/root:/{DRIVE_PATH}:/content"
+    req = Request(url, headers={"Authorization": f"Bearer {token}"})
 
-def graph_get(url, token, session_id=None, retries=6, base_wait=10):
-    """GET with aggressive retry for 504s."""
-    for attempt in range(retries):
-        headers = {"Authorization": f"Bearer {token}"}
-        if session_id:
-            headers["workbook-session-id"] = session_id
-        req = Request(url, headers=headers)
-        try:
-            return json.loads(urlopen(req, timeout=180).read())
-        except HTTPError as e:
-            if e.code in (504, 502, 503) and attempt < retries - 1:
-                wait = base_wait * (attempt + 1)
-                print(f"  ⏳ {e.code} error, retry {attempt+1}/{retries-1} (waiting {wait}s)...")
-                time.sleep(wait)
-                continue
-            raise
-        except Exception as e:
-            if attempt < retries - 1:
-                wait = base_wait * (attempt + 1)
-                print(f"  ⏳ Error: {e}, retry {attempt+1}/{retries-1} (waiting {wait}s)...")
-                time.sleep(wait)
-                continue
-            raise
-
-def graph_post(url, token, body_dict, timeout=120):
-    body = json.dumps(body_dict).encode()
-    req = Request(url, data=body, headers={
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    })
-    return json.loads(urlopen(req, timeout=timeout).read())
-
-def create_session(token, retries=3):
-    """Create a persistent session with retries."""
-    url = f"{workbook_url()}/createSession"
-    for attempt in range(retries):
-        try:
-            resp = graph_post(url, token, {"persistChanges": False}, timeout=180)
-            return resp.get("id")
-        except Exception as e:
-            if attempt < retries - 1:
-                wait = 15 * (attempt + 1)
-                print(f"  ⚠️ Session attempt {attempt+1} failed: {e}")
-                print(f"  Waiting {wait}s before retry...")
-                time.sleep(wait)
-            else:
-                print(f"  ⚠️ All session attempts failed: {e}")
-                return None
-
-def read_range(token, session_id, sheet, address):
-    encoded_sheet = quote(sheet, safe="")
-    url = f"{workbook_url()}/worksheets('{encoded_sheet}')/range(address='{address}')"
-    data = graph_get(url, token, session_id)
-    return data.get("values", [])
-
-def warm_up_workbook(token, session_id):
-    """Read a single cell to force the workbook to load and calculate."""
-    print("🔥 Warming up workbook (reading A1)...")
-    encoded_sheet = quote(SHEET, safe="")
-    url = f"{workbook_url()}/worksheets('{encoded_sheet}')/range(address='A1')"
-    try:
-        graph_get(url, token, session_id, retries=6, base_wait=15)
-        print("  ✅ Workbook is responsive")
-        return True
-    except Exception as e:
-        print(f"  ⚠️ Warm-up failed: {e}")
-        return False
+    # Follow redirects - Graph API returns a 302 to the actual download URL
+    import urllib.request
+    opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler)
+    resp = opener.open(req, timeout=300)
+    return resp.read()
 
 # ── Main ────────────────────────────────────────────────────────────────
 def main():
+    # Step 0: Install openpyxl
+    print("📦 Installing openpyxl...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl", "-q"])
+
     print("🔐 Authenticating (client credentials)...")
     token = get_app_token()
     print("✅ Token acquired")
 
-    # Step 1: Create session (triggers workbook load)
-    print("📂 Creating workbook session...")
-    session_id = create_session(token)
-    if session_id:
-        print(f"  Session: {session_id[:20]}...")
-    else:
-        print("  No session (proceeding without)")
+    # Step 1: Download the raw workbook file
+    print(f"📥 Downloading {DRIVE_PATH}...")
+    file_bytes = download_workbook(token)
+    print(f"  Downloaded {len(file_bytes):,} bytes")
 
-    # Step 2: Warm up — read a single cell to force Excel Online to open the workbook
-    # The first access to a complex workbook often triggers recalculation and times out.
-    # By warming up and waiting, subsequent reads are much faster.
-    warm_up_workbook(token, session_id)
-    print("⏳ Waiting 30s for workbook to stabilize...")
-    time.sleep(30)
+    # Step 2: Save to temp file and open with openpyxl
+    with tempfile.NamedTemporaryFile(suffix=".xlsm", delete=False) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
 
-    # Step 3: Read each scenario
+    print(f"📊 Opening workbook with openpyxl...")
+    import openpyxl
+    # data_only=True reads cached values instead of formulas
+    wb = openpyxl.load_workbook(tmp_path, read_only=True, data_only=True, keep_links=False)
+
+    if SHEET not in wb.sheetnames:
+        print(f"❌ Sheet '{SHEET}' not found! Available: {wb.sheetnames}")
+        sys.exit(1)
+
+    ws = wb[SHEET]
+    print(f"  Sheet '{SHEET}' loaded")
+
+    # Step 3: Read each scenario snapshot
     output = {
         "updated": datetime.now(timezone.utc).isoformat(),
         "sheet": SHEET,
@@ -147,16 +95,7 @@ def main():
 
     for scenario in SCENARIOS:
         start_row = SNAPSHOT_STARTS[scenario]
-        end_row = start_row + N_ROWS - 1
-        address = f"A{start_row}:F{end_row}"
-        print(f"📊 Reading {SHEET}!{address} ({scenario})...")
-
-        try:
-            all_values = read_range(token, session_id, SHEET, address)
-            print(f"  Got {len(all_values)} rows")
-        except Exception as e:
-            print(f"  ❌ Failed to read {scenario}: {e}")
-            continue
+        print(f"📊 Reading {scenario} (rows {start_row}-{start_row + N_ROWS - 1})...")
 
         row_labels = []
         scenario_data = {}
@@ -164,13 +103,24 @@ def main():
         for yi, year in enumerate(YEARS):
             year_data = {}
             for offset in range(N_ROWS):
-                if offset >= len(all_values):
-                    break
-                row = all_values[offset]
-                label = str(row[0] or "").strip() if row[0] else f"row_{offset}"
+                row_num = start_row + offset
+                col_a = ws.cell(row=row_num, column=1).value  # Label column
+                col_val = ws.cell(row=row_num, column=yi + 2).value  # Year columns B-F
+
+                label = str(col_a or "").strip() if col_a else f"row_{offset}"
                 if yi == 0:
                     row_labels.append(label)
-                year_data[label] = row[yi + 1] if (yi + 1) < len(row) else 0
+
+                # Convert to number if possible, default to 0
+                if col_val is None:
+                    col_val = 0
+                elif isinstance(col_val, str):
+                    try:
+                        col_val = float(col_val)
+                    except ValueError:
+                        col_val = 0
+
+                year_data[label] = col_val
             scenario_data[year] = year_data
 
         output["scenarios"][scenario] = {
@@ -179,8 +129,8 @@ def main():
         }
         print(f"  ✅ {scenario}: {len(row_labels)} rows, labels: {row_labels[:5]}...")
 
-        # Small delay between reads
-        time.sleep(3)
+    wb.close()
+    os.unlink(tmp_path)
 
     if not output["scenarios"]:
         print("❌ No scenarios were read successfully!")
@@ -192,6 +142,14 @@ def main():
         json.dump(output, f, indent=2)
     print(f"\n📁 Wrote {out_path} ({os.path.getsize(out_path)} bytes)")
     print(f"🕐 Updated: {output['updated']}")
+
+    # Print a sample for verification
+    first_scenario = SCENARIOS[0]
+    first_year = YEARS[0]
+    sample = output["scenarios"][first_scenario]["data"][first_year]
+    print(f"\n📋 Sample ({first_scenario}/{first_year}):")
+    for label, val in list(sample.items())[:5]:
+        print(f"  {label}: {val}")
 
 if __name__ == "__main__":
     main()
