@@ -313,12 +313,15 @@ function renderSankey(year) {
         { id: 'Modules', color: COL.modules, column: 0 },
         { id: 'Revenue', color: COL.revenue, column: 1 },
         { id: 'Gross Profit', color: COL.gp, column: 2 },
-        { id: 'Cost of Sales', color: COL.cogs, column: 2 },
+        { id: 'COGS', color: COL.cogs, column: 2 },
         { id: 'EBITDA', color: COL.ebitda, column: 3 },
         { id: 'S&M', color: COL.sm, column: 3 },
         { id: 'R&D', color: COL.rd, column: 3 },
         { id: 'G&A', color: COL.ga, column: 3 },
         { id: 'Other OpEx', color: '#94a3b8', column: 3 },
+        { id: 'Bespoke COGS', color: COL.bespokeCogs, column: 3 },
+        { id: 'Modules COGS', color: COL.modulesCogs, column: 3 },
+        { id: 'Boards COGS', color: COL.boardsCogs, column: 3 },
       ],
       data: (function() {
         const otherOpEx = d.totalOpEx - Math.abs(d.sm) - Math.abs(d.rd) - Math.abs(d.ga);
@@ -327,13 +330,17 @@ function renderSankey(year) {
           ['Boards', 'Revenue', d.boardsRev],
           ['Modules', 'Revenue', d.modulesRev],
           ['Revenue', 'Gross Profit', d.grossProfit],
-          ['Revenue', 'Cost of Sales', d.totalCOGS],
+          ['Revenue', 'COGS', d.totalCOGS],
           ['Gross Profit', 'EBITDA', Math.abs(d.ebitda)],
           ['Gross Profit', 'S&M', Math.abs(d.sm)],
           ['Gross Profit', 'R&D', Math.abs(d.rd)],
           ['Gross Profit', 'G&A', Math.abs(d.ga)],
         ];
         if (otherOpEx > 0) links.push(['Gross Profit', 'Other OpEx', otherOpEx]);
+        // COGS breakdown (right of COGS bar)
+        links.push(['COGS', 'Bespoke COGS', Math.abs(d.bespokeCOGS)]);
+        links.push(['COGS', 'Modules COGS', Math.abs(d.modulesCOGS)]);
+        links.push(['COGS', 'Boards COGS', Math.abs(d.boardsCOGS)]);
         return links;
       })()
     }]
